@@ -1,0 +1,3216 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>盲水印工坊 · FFT 频域盲水印合成 / 分离 / 检测</title>
+<style>
+:root {
+  --bg: #f4f6f8;
+  --card: #ffffff;
+  --line: #e2e6ec;
+  --line-strong: #cfd6e0;
+  --fg: #171a1f;
+  --fg-dim: #5a626e;
+  --fg-faint: #8b94a1;
+  --brand: #1a5fd0;
+  --brand-soft: #eaf1fd;
+  --ok: #0d8a63;
+  --ok-soft: #e6f6f0;
+  --warn: #b45309;
+  --warn-soft: #fdf3e3;
+  --danger: #b3261e;
+  --radius: 10px;
+  --shadow: 0 1px 2px rgba(16, 24, 40, .05), 0 4px 12px rgba(16, 24, 40, .05);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------------- 顶栏 ---------------- */
+.topbar {
+  background: var(--card);
+  border-bottom: 1px solid var(--line);
+  padding: 14px 26px;
+  display: flex;
+  align-items: center;
+  gap: 26px;
+  flex-wrap: wrap;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+.brand { display: flex; align-items: center; gap: 12px; }
+.logo {
+  width: 38px; height: 38px; border-radius: 9px;
+  background: linear-gradient(135deg, #1a5fd0, #3b8ae6);
+  color: #fff; font-size: 19px; font-weight: 600;
+  display: flex; align-items: center; justify-content: center;
+  flex: 0 0 auto;
+}
+.brand h1 { margin: 0; font-size: 16px; font-weight: 650; letter-spacing: .2px; }
+.brand p { margin: 0; font-size: 12px; color: var(--fg-faint); }
+
+.tabs { display: flex; gap: 4px; margin-left: auto; background: #f0f2f5; padding: 4px; border-radius: 9px; }
+.tab {
+  border: 0; background: transparent; color: var(--fg-dim);
+  font: inherit; font-weight: 500; padding: 7px 20px; border-radius: 6px;
+  cursor: pointer; transition: all .15s;
+}
+.tab:hover { color: var(--fg); }
+.tab.active { background: var(--card); color: var(--brand); box-shadow: var(--shadow); font-weight: 600; }
+
+/* ---------------- 布局 ---------------- */
+main { max-width: 1180px; margin: 0 auto; padding: 24px 26px 80px; }
+.panel { display: none; }
+.panel.active { display: block; animation: fade .2s ease; }
+@keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+  margin-bottom: 16px;
+}
+.card > h2 {
+  margin: 0 0 4px; font-size: 14px; font-weight: 650;
+  display: flex; align-items: center; gap: 8px;
+}
+.card > h2 .step {
+  width: 20px; height: 20px; border-radius: 50%;
+  background: var(--brand-soft); color: var(--brand);
+  font-size: 11px; font-weight: 700;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.card > .hint { margin: 0 0 14px; font-size: 12.5px; color: var(--fg-faint); }
+
+/* ---------------- 上传槽位 ---------------- */
+.slots { display: grid; gap: 14px; }
+.slots.two { grid-template-columns: 1fr 1fr; }
+.slots.three { grid-template-columns: repeat(3, 1fr); }
+@media (max-width: 820px) { .slots.two, .slots.three { grid-template-columns: 1fr; } }
+
+.slot {
+  position: relative;
+  border: 1.5px dashed var(--line-strong);
+  border-radius: var(--radius);
+  background: #fbfcfd;
+  min-height: 168px;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  cursor: pointer; transition: all .15s;
+  overflow: hidden;
+  padding: 12px;
+}
+.slot:hover { border-color: #9db4d6; background: #f7faff; }
+.slot.drag { border-color: var(--brand); background: var(--brand-soft); border-style: solid; }
+.slot.filled { border-style: solid; border-color: var(--line); background: #fff; padding: 0; }
+.slot > .ph { text-align: center; pointer-events: none; padding: 8px; }
+.slot > .ph svg { width: 26px; height: 26px; stroke: var(--fg-faint); fill: none; stroke-width: 1.6; }
+.slot > .ph b { display: block; font-size: 13px; font-weight: 600; color: var(--fg-dim); margin-top: 8px; }
+.slot > .ph span { display: block; font-size: 11.5px; color: var(--fg-faint); margin-top: 2px; }
+.slot .thumb { width: 100%; height: 168px; object-fit: contain; background: #f1f3f6; display: block; }
+.slot .tag {
+  position: absolute; left: 8px; top: 8px;
+  background: rgba(23, 26, 31, .78); color: #fff;
+  font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 5px;
+  backdrop-filter: blur(3px);
+}
+.slot .clear {
+  position: absolute; right: 8px; top: 8px;
+  width: 24px; height: 24px; border-radius: 6px; border: 0;
+  background: rgba(23, 26, 31, .78); color: #fff; cursor: pointer;
+  font-size: 15px; line-height: 1; display: flex; align-items: center; justify-content: center;
+}
+.slot .clear:hover { background: var(--danger); }
+.slot .meta {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  background: rgba(23, 26, 31, .78); color: #fff;
+  font-size: 11.5px; padding: 4px 10px;
+  font-variant-numeric: tabular-nums;
+  backdrop-filter: blur(3px);
+  display: flex; justify-content: space-between; gap: 8px;
+}
+.slot .meta .warn { color: #ffd28a; }
+.slot.optional .tag { background: rgba(90, 98, 110, .78); }
+
+/* ---------------- 参数 ---------------- */
+.opts { display: flex; flex-wrap: wrap; gap: 18px 26px; align-items: flex-end; }
+.field { display: flex; flex-direction: column; gap: 5px; }
+.field label { font-size: 12px; font-weight: 600; color: var(--fg-dim); }
+.field .sub { font-size: 11.5px; color: var(--fg-faint); }
+.field input[type=number], .field select {
+  font: inherit; font-variant-numeric: tabular-nums;
+  padding: 7px 10px; border: 1px solid var(--line-strong);
+  border-radius: 7px; background: #fff; color: var(--fg);
+  min-width: 128px; outline: none;
+}
+.field input[type=number]:focus, .field select:focus { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
+.field input[type=range] { width: 168px; accent-color: var(--brand); }
+.field .row { display: flex; align-items: center; gap: 10px; }
+.field .val { font-variant-numeric: tabular-nums; font-weight: 650; color: var(--brand); min-width: 30px; }
+
+/* ---------------- 按钮 ---------------- */
+.btn {
+  font: inherit; font-weight: 600; cursor: pointer;
+  border-radius: 8px; padding: 9px 22px; border: 1px solid transparent;
+  transition: all .15s; white-space: nowrap;
+}
+.btn.primary { background: var(--brand); color: #fff; }
+.btn.primary:hover:not(:disabled) { background: #154fb0; }
+.btn.primary:disabled { background: #c3cddd; cursor: not-allowed; }
+.btn.ghost { background: #fff; border-color: var(--line-strong); color: var(--fg-dim); }
+.btn.ghost:hover { border-color: var(--brand); color: var(--brand); }
+.btn:disabled { opacity: .55; cursor: not-allowed; }
+
+.actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 16px; }
+
+/* ---------------- 进度 ---------------- */
+.progress { margin-top: 16px; display: none; }
+.progress.on { display: block; }
+.progress .bar { height: 5px; background: #e8ecf2; border-radius: 3px; overflow: hidden; }
+.progress .fill { height: 100%; width: 0; background: linear-gradient(90deg, #1a5fd0, #4a95ee); transition: width .12s linear; }
+.progress .txt { font-size: 12px; color: var(--fg-faint); margin-top: 6px; font-variant-numeric: tabular-nums; }
+
+/* ---------------- 结果 ---------------- */
+.result { display: none; }
+.result.on { display: block; }
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)); gap: 10px; margin: 14px 0 4px; }
+.stat { background: #f7f9fb; border: 1px solid var(--line); border-radius: 8px; padding: 10px 13px; }
+.stat dt { font-size: 11.5px; color: var(--fg-faint); margin: 0 0 3px; }
+.stat dd { margin: 0; font-size: 17px; font-weight: 650; font-variant-numeric: tabular-nums; letter-spacing: -.2px; }
+.stat dd small { font-size: 11.5px; font-weight: 500; color: var(--fg-faint); margin-left: 3px; }
+.stat.good dd { color: var(--ok); }
+.stat.bad dd { color: var(--danger); }
+.stat.warn dd { color: var(--warn); }
+
+.preview { margin-top: 14px; text-align: center; background: #f1f3f6; border-radius: 8px; padding: 12px; }
+.preview img { max-width: 100%; max-height: 460px; border-radius: 6px; box-shadow: var(--shadow); display: block; margin: 0 auto; }
+.preview .cap { font-size: 12px; color: var(--fg-faint); margin-top: 8px; }
+
+.verdict {
+  display: flex; align-items: center; gap: 12px;
+  padding: 13px 16px; border-radius: 8px; margin: 14px 0 0;
+  font-weight: 600;
+}
+.verdict.yes { background: var(--ok-soft); color: var(--ok); }
+.verdict.no { background: #fdeceb; color: var(--danger); }
+.verdict.maybe { background: var(--warn-soft); color: var(--warn); }
+.verdict .ic { font-size: 19px; line-height: 1; }
+.verdict small { display: block; font-weight: 400; font-size: 12px; opacity: .85; margin-top: 1px; }
+
+/* ---------------- 说明 / 提示 ---------------- */
+.note {
+  font-size: 12.5px; color: var(--fg-dim);
+  background: #f7f9fb; border-left: 3px solid var(--line-strong);
+  border-radius: 0 7px 7px 0; padding: 10px 14px; margin-top: 14px;
+}
+.note.info { border-left-color: var(--brand); background: var(--brand-soft); color: #1c3f77; }
+.note.warn { border-left-color: var(--warn); background: var(--warn-soft); color: #7c3f08; }
+.note b { font-weight: 650; }
+.note code {
+  background: rgba(23, 26, 31, .07); padding: 1px 5px; border-radius: 4px;
+  font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 11.5px;
+}
+
+details.help { margin-top: 16px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--card); }
+details.help > summary {
+  cursor: pointer; padding: 13px 20px; font-weight: 600; font-size: 13.5px;
+  list-style: none; display: flex; align-items: center; gap: 8px;
+}
+details.help > summary::-webkit-details-marker { display: none; }
+details.help > summary::before { content: "▸"; color: var(--fg-faint); transition: transform .15s; }
+details.help[open] > summary::before { transform: rotate(90deg); }
+details.help .body { padding: 0 20px 18px; color: var(--fg-dim); font-size: 13px; }
+details.help .body h3 { font-size: 13px; color: var(--fg); margin: 16px 0 6px; }
+details.help .body h3:first-child { margin-top: 0; }
+details.help .body ul, details.help .body ol { margin: 6px 0; padding-left: 20px; }
+details.help .body li { margin: 4px 0; }
+details.help .body code, .card .hint code {
+  background: rgba(23, 26, 31, .07); padding: 1px 5px; border-radius: 4px;
+  font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 12px;
+}
+table.tbl { width: 100%; border-collapse: collapse; font-size: 12.5px; margin: 8px 0; }
+table.tbl th, table.tbl td { border: 1px solid var(--line); padding: 7px 10px; text-align: left; vertical-align: top; }
+table.tbl th { background: #f7f9fb; font-weight: 650; }
+
+.spinner {
+  width: 13px; height: 13px; border: 2px solid rgba(255, 255, 255, .35);
+  border-top-color: #fff; border-radius: 50%;
+  display: inline-block; vertical-align: -2px; margin-right: 7px;
+  animation: spin .7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.toast {
+  position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%) translateY(14px);
+  background: #171a1f; color: #fff; font-size: 13px; font-weight: 500;
+  padding: 10px 20px; border-radius: 8px; box-shadow: 0 8px 26px rgba(0, 0, 0, .22);
+  opacity: 0; pointer-events: none; transition: all .2s; z-index: 60; max-width: 80vw;
+}
+.toast.on { opacity: 1; transform: translateX(-50%) translateY(0); }
+.toast.err { background: var(--danger); }
+
+/* ---------------- 二级分段标签（隐写面板） ---------------- */
+.segtabs {
+  display: flex; gap: 4px; background: #eef1f5; padding: 4px;
+  border-radius: 9px; margin-bottom: 14px;
+}
+.segtabs.small { padding: 3px; margin: 0 0 12px; display: inline-flex; }
+.segtab {
+  border: 0; background: transparent; color: var(--fg-dim);
+  font: inherit; font-weight: 500; padding: 8px 20px; border-radius: 6px;
+  cursor: pointer; transition: all .15s;
+}
+.segtabs.small .segtab { padding: 6px 16px; font-size: 13px; }
+.segtab:hover { color: var(--fg); }
+.segtab.active {
+  background: var(--card); color: var(--brand);
+  font-weight: 600; box-shadow: var(--shadow);
+}
+
+/* ---------------- 文本域 ---------------- */
+textarea {
+  width: 100%; font: inherit; font-size: 13px; line-height: 1.55;
+  padding: 10px 12px; border: 1px solid var(--line-strong);
+  border-radius: 8px; resize: vertical; outline: none;
+  background: #fff; color: var(--fg); box-sizing: border-box;
+}
+textarea:focus { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
+textarea[readonly] { background: #f7f9fb; }
+
+/* 单列槽位 */
+.slots.one { grid-template-columns: 1fr; }
+
+
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="logo">盲</div>
+    <div>
+      <h1>盲水印工坊</h1>
+      <p>FFT 频域盲水印 · 合成 / 分离 / 检测</p>
+    </div>
+  </div>
+  <nav class="tabs">
+    <button class="tab active" data-tab="encode">合成</button>
+    <button class="tab" data-tab="decode">分离</button>
+    <button class="tab" data-tab="detect">检测</button>
+    <button class="tab" data-tab="stego">隐写</button>
+  </nav>
+</header>
+
+<main>
+
+  <!-- ============ 全局参数 ============ -->
+  <div class="card">
+    <h2><span class="step">⚙</span>算法参数</h2>
+    <p class="hint">合成 / 分离 / 检测三个面板共用。合成与分离时的 <code>种子</code>、<code>强度</code>、<code>变换模式</code> 必须完全一致，否则解不出水印。隐写面板另有自己的密码。</p>
+    <div class="opts">
+      <div class="field">
+        <label for="opt-seed">种子 seed</label>
+        <input type="number" id="opt-seed" value="20160930" step="1">
+      </div>
+      <div class="field">
+        <label for="opt-alpha">强度 alpha</label>
+        <div class="row">
+          <input type="range" id="opt-alpha" min="0.5" max="12" step="0.5" value="3">
+          <span class="val" id="opt-alpha-val">3.0</span>
+        </div>
+        <span class="sub">越大越抗压缩，但越容易被看出</span>
+      </div>
+      <div class="field">
+        <label for="opt-transform">变换模式</label>
+        <select id="opt-transform">
+          <option value="numpy">兼容原作（可与 Python 互解）</option>
+          <option value="channel">高质量（改动更小）</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="opt-backdrop">透明区域合成</label>
+        <select id="opt-backdrop">
+          <option value="white">合成到白底</option>
+          <option value="black">合成到黑底</option>
+          <option value="ignore">忽略透明通道</option>
+        </select>
+      </div>
+    </div>
+    <div class="note info" id="mode-note"></div>
+  </div>
+
+  <!-- ============ 合成 ============ -->
+  <section class="panel active" id="panel-encode">
+    <div class="card">
+      <h2><span class="step">1</span>选择图片</h2>
+      <p class="hint">左边是载体图（会被嵌入水印），右边是水印图。支持拖拽、点击选择，或直接 Ctrl+V 粘贴。</p>
+      <div class="slots two">
+        <div class="slot" data-slot="enc-img">
+          <div class="ph">
+            <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+            <b>载体图</b><span>拖入 / 点击选择 / Ctrl+V</span>
+          </div>
+        </div>
+        <div class="slot" data-slot="enc-wm">
+          <div class="ph">
+            <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/><rect x="15" y="14" width="6" height="6" rx="1"/></svg>
+            <b>水印图</b><span>高 &lt; 载体图高/2，宽 &lt; 载体图宽</span>
+          </div>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="btn ghost" id="btn-sample">载入示例图片</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2><span class="step">2</span>合成并下载</h2>
+      <p class="hint">水印会被打散后叠加到载体图的频域上，肉眼几乎看不出差别。</p>
+      <div class="actions">
+        <button class="btn primary" id="btn-run-encode" disabled>开始合成</button>
+      </div>
+      <div class="progress" id="prog-encode">
+        <div class="bar"><div class="fill"></div></div>
+        <div class="txt"></div>
+      </div>
+      <div class="result" id="res-encode">
+        <div class="stat-grid" id="stat-encode"></div>
+        <div class="preview">
+          <img id="img-encode-out" alt="合成结果">
+          <div class="cap">合成结果（已嵌入盲水印）</div>
+        </div>
+        <div class="actions">
+          <button class="btn primary" id="btn-dl-encode">下载合成图（PNG）</button>
+        </div>
+        <div class="note warn" id="encode-warn" hidden></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 分离 ============ -->
+  <section class="panel" id="panel-decode">
+    <div class="card">
+      <h2><span class="step">1</span>选择图片</h2>
+      <p class="hint">左：原始载体图（未加过水印的那张）。右：带水印的图。两张图必须尺寸完全一致。</p>
+      <div class="slots two">
+        <div class="slot" data-slot="dec-img">
+          <div class="ph">
+            <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+            <b>原始载体图</b><span>拖入 / 点击选择 / Ctrl+V</span>
+          </div>
+        </div>
+        <div class="slot" data-slot="dec-wm">
+          <div class="ph">
+            <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 12l3 3 5-6"/></svg>
+            <b>含水印图</b><span>尺寸需与左侧完全一致</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2><span class="step">2</span>分离水印</h2>
+      <p class="hint">利用两张图的频谱差分还原水印。若只关心"有没有水印"，可直接去「检测」面板。</p>
+      <div class="actions">
+        <button class="btn primary" id="btn-run-decode" disabled>开始分离</button>
+      </div>
+      <div class="progress" id="prog-decode">
+        <div class="bar"><div class="fill"></div></div>
+        <div class="txt"></div>
+      </div>
+      <div class="result" id="res-decode">
+        <div class="stat-grid" id="stat-decode"></div>
+        <div class="preview">
+          <img id="img-decode-out" alt="分离结果">
+          <div class="cap">分离出的水印（左上角为实际内容区，右下为其镜像副本）</div>
+        </div>
+        <div class="actions">
+          <button class="btn primary" id="btn-dl-decode">下载水印图（PNG）</button>
+          <button class="btn ghost" id="btn-enh-decode">增强显示</button>
+        </div>
+        <div class="note" id="decode-note"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 检测 ============ -->
+  <section class="panel" id="panel-detect">
+    <div class="card">
+      <h2><span class="step">1</span>选择图片</h2>
+      <p class="hint">给出<strong>原图</strong>可做精确检测（推荐）；不给则退化为频谱启发式盲检，结论仅供参考。</p>
+      <div class="slots three">
+        <div class="slot" data-slot="det-target">
+          <div class="ph">
+            <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+            <b>待检图</b><span>必选</span>
+          </div>
+        </div>
+        <div class="slot optional" data-slot="det-origin">
+          <div class="ph">
+            <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 12h8"/></svg>
+            <b>原图</b><span>可选 · 用于精确检测</span>
+          </div>
+        </div>
+        <div class="slot optional" data-slot="det-cand">
+          <div class="ph">
+            <svg viewBox="0 0 24 24"><path d="M12 3v18M3 12h18" stroke-dasharray="3 3"/><circle cx="12" cy="12" r="4"/></svg>
+            <b>候选水印</b><span>可选 · 用于核对</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2><span class="step">2</span>开始检测</h2>
+      <div class="actions">
+        <button class="btn primary" id="btn-run-detect" disabled>开始检测</button>
+      </div>
+      <div class="progress" id="prog-detect">
+        <div class="bar"><div class="fill"></div></div>
+        <div class="txt"></div>
+      </div>
+      <div class="result" id="res-detect">
+        <div class="verdict" id="det-verdict"><span class="ic"></span><div></div></div>
+        <div class="stat-grid" id="stat-detect"></div>
+        <div id="det-preview-wrap" hidden>
+          <div class="preview">
+            <img id="img-detect-out" alt="分离出的水印">
+            <div class="cap">从待检图中还原出的水印</div>
+          </div>
+          <div class="actions">
+            <button class="btn primary" id="btn-dl-detect">下载水印图（PNG）</button>
+          </div>
+        </div>
+        <div id="det-radial-wrap" hidden>
+          <div class="preview">
+            <canvas id="radial-canvas" width="880" height="260"></canvas>
+            <div class="cap">径向平均功率谱（对数坐标）—— 平坦的高频"地板"是水印的弱特征</div>
+          </div>
+        </div>
+        <div class="note" id="det-note"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 隐写 ============ -->
+  <section class="panel" id="panel-stego">
+    <div class="note info" style="margin:0 0 14px">
+      <b>和上面三个面板不是一回事</b>：这里藏的是<strong>数据</strong>（文字或任意文件），
+      而且<strong>提取时不需要原图</strong>——只要记得密码就行。
+      代价是容量小（鲁棒模式约几 KB），并且会改动像素，务必用 PNG 保存。
+    </div>
+
+    <div class="segtabs">
+      <button class="segtab active" data-seg="embed">嵌入数据</button>
+      <button class="segtab" data-seg="extract">提取数据</button>
+    </div>
+
+    <!-- ================= 嵌入 ================= -->
+    <div id="seg-embed">
+
+      <div class="card">
+        <h2><span class="step">1</span>载体图</h2>
+        <p class="hint">用来承载隐藏数据的图片。内容越复杂（照片、纹理）越不显眼；纯色大色块容易被看出改动。</p>
+        <div class="slots one">
+          <div class="slot" data-slot="stg-img">
+            <div class="ph">
+              <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+              <b>载体图</b><span>拖入 / 点击选择 / Ctrl+V</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2><span class="step">2</span>藏什么</h2>
+        <div class="segtabs small" id="stg-kind-tabs">
+          <button class="segtab active" data-kind="text">文字</button>
+          <button class="segtab" data-kind="file">任意文件</button>
+        </div>
+        <div id="kind-text">
+          <textarea id="stg-text" rows="4" placeholder="输入要隐藏的文字，比如版权声明、联系方式、一段悄悄话…"></textarea>
+          <div class="hint" id="stg-text-meta"></div>
+        </div>
+        <div id="kind-file" hidden>
+          <input type="file" id="stg-file-input" hidden>
+          <div class="actions" style="margin-top:0">
+            <button class="btn ghost" id="stg-pick-file">选择文件…</button>
+          </div>
+          <div class="hint" id="stg-file-info">尚未选择文件</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2><span class="step">3</span>嵌入方式与密码</h2>
+        <div class="opts">
+          <div class="field">
+            <label for="stg-method">方式</label>
+            <select id="stg-method">
+              <option value="robust">鲁棒模式 · 免原图 · 抗压缩</option>
+              <option value="lsb">大容量模式 · 免原图 · 任意文件</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="stg-password">密码</label>
+            <input type="number" id="stg-password" value="20260919">
+          </div>
+        </div>
+        <div class="note" id="stg-capacity"></div>
+      </div>
+
+      <div class="card">
+        <h2><span class="step">4</span>嵌入并保存</h2>
+        <div class="actions">
+          <button class="btn primary" id="btn-run-stego" disabled>开始嵌入</button>
+        </div>
+        <div class="progress" id="prog-stego">
+          <div class="bar"><div class="fill"></div></div>
+          <div class="txt"></div>
+        </div>
+        <div class="result" id="res-stego">
+          <div class="verdict yes" id="stego-verdict">
+            <span class="ic">●</span>
+            <div>嵌入完成<small id="stego-verdict-sub"></small></div>
+          </div>
+          <div class="stat-grid" id="stat-stego"></div>
+          <div class="preview">
+            <img id="img-stego-out" alt="嵌入结果">
+            <div class="cap">嵌入结果（务必以 PNG 保存与传递）</div>
+          </div>
+          <div class="actions">
+            <button class="btn primary" id="btn-dl-stego">下载载体图（PNG）</button>
+          </div>
+          <div class="note warn" id="stego-warn" hidden></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= 提取 ================= -->
+    <div id="seg-extract" hidden>
+      <div class="card">
+        <h2><span class="step">1</span>待提取的图</h2>
+        <p class="hint">就是刚才那张嵌入过数据的图。<strong>不需要原图</strong>，但尺寸须与嵌入时一致。</p>
+        <div class="slots one">
+          <div class="slot" data-slot="stgx-img">
+            <div class="ph">
+              <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+              <b>待提取图</b><span>拖入 / 点击选择 / Ctrl+V</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2><span class="step">2</span>密码</h2>
+        <div class="opts">
+          <div class="field">
+            <label for="stgx-password">密码</label>
+            <input type="number" id="stgx-password" value="20260919">
+            <span class="sub">必须与嵌入时完全一致</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2><span class="step">3</span>提取</h2>
+        <div class="actions">
+          <button class="btn primary" id="btn-run-extract" disabled>开始提取</button>
+        </div>
+        <div class="progress" id="prog-extract">
+          <div class="bar"><div class="fill"></div></div>
+          <div class="txt"></div>
+        </div>
+        <div class="result" id="res-extract">
+          <div class="verdict" id="extract-verdict">
+            <span class="ic">●</span>
+            <div id="extract-verdict-text"></div>
+          </div>
+          <div class="stat-grid" id="stat-extract"></div>
+          <div id="extract-text-wrap" hidden>
+            <label class="field-label" style="display:block;margin:14px 0 5px;font-size:12px;font-weight:600;color:var(--fg-dim)">提取到的文字</label>
+            <textarea id="extract-text" rows="5" readonly></textarea>
+            <div class="actions">
+              <button class="btn ghost" id="btn-copy-text">复制文字</button>
+            </div>
+          </div>
+          <div id="extract-file-wrap" hidden>
+            <div class="actions">
+              <button class="btn primary" id="btn-dl-extract">下载还原的文件</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 说明 ============ -->
+  <details class="help">
+    <summary>算法原理与使用须知</summary>
+    <div class="body">
+      <h3>一句话原理</h3>
+      <p>把水印图打散成噪声状的图案，直接<strong>加到位图的频域（FFT 结果）上</strong>，再逆变换回空间域。因为改的是频域的一个极小的量，画面看不出差别；解码时用「原图频谱」和「含水印图频谱」相减，就能把那个图案捞回来。</p>
+
+      <h3>完整流程（对齐 chishaxie/BlindWaterMark）</h3>
+      <ol>
+        <li>取一块 <code>(高/2, 宽)</code> 的空画布，把水印贴到左上角，得到 <code>hwm2</code>；</li>
+        <li>用种子 <code>seed</code> 驱动一个伪随机洗牌，生成两个置换 <code>m</code>（长度 高/2）和 <code>n</code>（长度 宽）；</li>
+        <li>令 <code>hwm[i][j] = hwm2[m[i]][n[j]]</code> —— 水印被彻底打散，看起来像噪声；</li>
+        <li>把 <code>hwm</code> 以 180° 翻转的方式镜像铺满整张画布，得到 <code>rwm</code>；</li>
+        <li><code>img_wm = real( ifft2( fft2(img) + alpha × rwm ) )</code> —— 水印叠加完成。</li>
+      </ol>
+      <p>分离就是反向：<code>rwm = real( (fft2(img_wm) − fft2(img)) / alpha )</code>，再按 <code>m</code>、<code>n</code> 把位置还原回去。</p>
+
+      <h3>关键约束</h3>
+      <ul>
+        <li><strong>必须提供原图</strong>。这是加法式频域盲水印的固有限制：分离本质上是做频谱差分，没有原图就没有基准。原图必须是<strong>加水印之前的那一张原始文件</strong>，重新保存过（哪怕只是重新编码）都会导致解不出来。</li>
+        <li><strong>水印尺寸受限</strong>：高度必须小于载体图高度的一半，宽度必须小于载体图宽度。</li>
+        <li><strong>用 PNG 保存</strong>。JPEG 是有损压缩，会破坏频域里的水印；本工具下载的一律为无损 PNG。</li>
+        <li><strong>不能缩放、裁剪、旋转</strong>含水印图，这些操作会直接毁掉水印。</li>
+      </ul>
+
+      <h3>为什么分离结果有条纹和噪点</h3>
+      <p>两个原因，都来自算法本身：</p>
+      <ul>
+        <li>原作用 <code>rwm[H-1-i][W-1-j]</code> 做镜像，而 DFT 意义上的对称是 <code>(H-i) mod H</code>，两者<strong>相差 1 个像素</strong>。这导致逆变换时约一半能量无法还原，表现为<strong>沿对角线方向 1 像素的双影</strong>，以及图片首行首列只有一半亮度。</li>
+        <li>解码时又用 <code>np.uint8()</code> 截断取整，量化误差被放大成可见的颗粒。</li>
+      </ul>
+      <p>本工具保留了这一行为以保证与 Python 版互解；如果你只在本工具内闭环使用，把「变换模式」切到<strong>高质量</strong>可以显著改善画质和分离效果。</p>
+
+      <h3>「兼容原作」与「高质量」两种模式的区别</h3>
+      <table class="tbl">
+        <tr><th>模式</th><th>做了什么</th><th>特点</th></tr>
+        <tr>
+          <td><strong>兼容原作</strong></td>
+          <td>复刻 <code>np.fft.fft2(img)</code> 对 <code>(H,W,3)</code> 数组的默认行为 —— 它的变换轴其实是「宽度轴 + 通道轴」，等价于逐行做 <code>(宽, 3)</code> 的二维变换</td>
+          <td>可与 Python 版互相解出；检测判据极灵敏；但图像改动略大（PSNR ≈ 41 dB）</td>
+        </tr>
+        <tr>
+          <td><strong>高质量</strong></td>
+          <td>每个颜色通道各自做一次真正的空间二维 FFT</td>
+          <td>改动极小、几乎完全无感（PSNR ≈ 58 dB）；但只有本工具能解，Python 版解不出来</td>
+        </tr>
+      </table>
+
+      <h3>第四个面板：隐写（藏文字 / 任意文件）</h3>
+      <p>上面三个面板藏的是<strong>图片</strong>，而且提取必须提供原图。隐写面板换了一条完全不同的技术路线——
+      藏的是<strong>数据</strong>，而且<strong>不需要原图</strong>。</p>
+      <table class="tbl">
+        <tr><th>引擎</th><th>藏什么</th><th>容量（1024×1024）</th><th>免原图</th><th>抗压缩</th></tr>
+        <tr><td>FFT 加法式（前三个面板）</td><td>图片水印</td><td>大</td><td>否</td><td>弱</td></tr>
+        <tr><td><strong>DWT-DCT-SVD</strong>（鲁棒模式）</td><td>文字 / 短数据</td><td>约 6 KB</td><td><b>是</b></td><td>较强</td></tr>
+        <tr><td><strong>LSB</strong>（大容量模式）</td><td>任意文件</td><td>约 393 KB</td><td><b>是</b></td><td>无</td></tr>
+      </table>
+
+      <h3>鲁棒模式为什么不需要原图</h3>
+      <p>它对图像做一级 Haar 小波分解取低频子带（LL），分成 4×4 块，每块做 DCT，
+      再对系数矩阵做 SVD，然后用「量化索引调制」把 1 个 bit 写进最大奇异值 s0：</p>
+      <p><code>q = floor(s0 / delta)</code>　→　<code>q' = 2*floor(q/2) + bit</code>　→　<code>s0' = (q' + 0.5) * delta</code></p>
+      <p>格点序号的<strong>奇偶本身携带了 bit</strong>，提取时把 s0 除回去取整就能读出来，
+      <strong>根本不需要知道原始 s0</strong>。又因为奇异值对图像扰动不敏感，
+      所以图片经过一定程度的压缩后仍能原样读回（实测 ±6 级像素抖动依然可解）。</p>
+      <p><strong>代价</strong>：容量小（约 (高/8)×(宽/8)×3 个 bit），而且对<strong>缩放和裁剪敏感</strong>——
+      DWT 的分块位置一旦错开就提取失败。所以不要改尺寸。</p>
+
+      <h3>大容量模式（LSB）</h3>
+      <p>直接把数据按位写进像素最低有效位。容量是鲁棒模式的上百倍，同样免原图，画质几乎无损（PSNR 通常 60 dB 以上）。
+      但它<strong>没有任何鲁棒性</strong>：只要图片被 JPEG 压缩、缩放、截图或旋转，数据就彻底没了。
+      用它就必须原样保存与传递 PNG。</p>
+      <p><strong>密码</strong>用于打散写入位置，提取时必须填一致。密码不对会因容器头部校验失败而直接报「没有提取到数据」。</p>
+
+      <h3>关于「检测」</h3>
+      <p>精确检测用的是一个很干净的判据：水印只叠加在频域的<strong>实部</strong>上，所以「含水印图频谱 − 原图频谱」在理想情况下是纯实数的。若图中并没有水印，这个差值就只剩量化/压缩噪声，实部与虚部能量相当。于是：</p>
+      <ul>
+        <li><code>√(E实部 / E虚部) ≈ 1</code> —— 没有水印；</li>
+        <li><code>√(E实部 / E虚部) ≫ 1</code> —— 存在水印（实测可到 10 以上，而对照图只有 1.5 左右）。</li>
+      </ul>
+      <p>不给原图时的「盲检」只是看径向功率谱在高频有没有异常的平坦"地板"，<strong>会被图像本身的噪声和纹理干扰，不能作为判定依据</strong>，仅作参考。</p>
+
+      <h3>与 Python 原作互通</h3>
+      <p>本工具的随机数发生器完整复刻了 CPython 的 MT19937（<code>seed</code> / <code>getrandbits</code> / <code>_randbelow</code> / <code>shuffle</code>），FFT 也复刻了 numpy 的变换轴选择。在「兼容原作」模式下，网页的合成结果可以直接用 <code>bwmforpy3.py decode</code> 解出，反之亦然（需保证 <code>seed</code>、<code>alpha</code> 一致，且图片用 PNG 无损传递）。</p>
+      <p>源代码基于 GPL-3.0 的 <a href="https://github.com/chishaxie/BlindWaterMark" target="_blank" rel="noopener">chishaxie/BlindWaterMark</a> 算法重新实现。</p>
+    </div>
+  </details>
+
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/*!
+ * BlindWaterMark Web — 核心算法库
+ * ---------------------------------------------------------------------------
+ * 严格复刻 https://github.com/chishaxie/BlindWaterMark 的 bwmforpy3.py。
+ *
+ * 算法要点：
+ *   1. 取一个 (floor(H/2), W) 的空矩阵 hwm，把水印贴到它的左上角；
+ *   2. 用 seed 驱动 CPython 的 random.shuffle 生成两个排列 m / n，
+ *      以 hwm[i][j] = hwm2[m[i]][n[j]] 把水印"打散"成噪声状图案；
+ *   3. 再把 hwm 以「180° 翻转」的方式镜像到 rwm 的整个画布：
+ *         rwm[i][j] = hwm[i][j],  rwm[H-1-i][W-1-j] = hwm[i][j]
+ *   4. 对每个通道做 img_wm = real( ifft2( fft2(img) + alpha * rwm ) )
+ *      —— 水印是直接加到频域上的，因此肉眼几乎不可见。
+ *
+ *   解码时反过来：rwm = real( (fft2(img_wm) - fft2(img)) / alpha )，
+ *   再按 m/n 逆排列还原出水印。
+ *
+ * 说明：由于第 3 步用的是 H-1-i（翻转）而不是 DFT 意义上的 (H-i) mod H
+ *（循环移位），二者相差 1 像素，会有一半能量不能被逆变换还原，
+ * 表现为解码结果出现"对角方向 1 像素双影 + 边界半亮度"。
+ * 这是原作的固有行为，本实现为保证互通而忠实保留。
+ */
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) module.exports = factory();
+  else root.BWM = factory();
+})(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+  'use strict';
+
+  /* =========================================================================
+   * 1. CPython 兼容随机数（MT19937）
+   *    必须与 CPython 的 random.seed(int) / getrandbits / _randbelow / shuffle
+   *    逐位一致，否则网页端与 Python 端无法互通。
+   * ======================================================================= */
+
+  var MT_N = 624, MT_M = 397;
+  var MT_MATRIX_A = 0x9908b0df;
+  var MT_UPPER_MASK = 0x80000000;
+  var MT_LOWER_MASK = 0x7fffffff;
+
+  function CPrng() {
+    this.mt = new Uint32Array(MT_N);
+    this.mti = MT_N + 1;
+  }
+
+  /** CPython: init_genrand(s) */
+  CPrng.prototype._initGenrand = function (s) {
+    var mt = this.mt, i, prev;
+    mt[0] = s >>> 0;
+    for (i = 1; i < MT_N; i++) {
+      prev = (mt[i - 1] ^ (mt[i - 1] >>> 30)) >>> 0;
+      mt[i] = (Math.imul(1812433253, prev) + i) >>> 0;
+    }
+    this.mti = MT_N;
+  };
+
+  /** CPython: init_by_array(key, key_length) */
+  CPrng.prototype._initByArray = function (key) {
+    var mt = this.mt, i, j, k, len = key.length;
+    this._initGenrand(19650218);
+    i = 1; j = 0;
+    for (k = Math.max(MT_N, len); k > 0; k--) {
+      mt[i] = (((mt[i] ^ Math.imul(mt[i - 1] ^ (mt[i - 1] >>> 30), 1664525)) >>> 0)
+        + key[j] + j) >>> 0;
+      i++; j++;
+      if (i >= MT_N) { mt[0] = mt[MT_N - 1]; i = 1; }
+      if (j >= len) j = 0;
+    }
+    for (k = MT_N - 1; k > 0; k--) {
+      mt[i] = (((mt[i] ^ Math.imul(mt[i - 1] ^ (mt[i - 1] >>> 30), 1566083941)) >>> 0)
+        - i) >>> 0;
+      i++;
+      if (i >= MT_N) { mt[0] = mt[MT_N - 1]; i = 1; }
+    }
+    mt[0] = 0x80000000;
+    this.mti = MT_N;
+  };
+
+  /**
+   * 等价于 CPython 的 random.seed(a)。
+   * 整数 a 会被转成绝对值，并按 32 位小端字拆成 key 数组。
+   */
+  CPrng.prototype.seed = function (a) {
+    var n = Math.abs(Math.trunc(Number(a) || 0));
+    var key = [], v = n;
+    do {
+      key.push((v % 4294967296) >>> 0);
+      v = Math.floor(v / 4294967296);
+    } while (v > 0);
+    this._initByArray(key);
+    return this;
+  };
+
+  /** CPython: genrand_uint32() */
+  CPrng.prototype._next = function () {
+    var mt = this.mt, y, kk;
+    if (this.mti >= MT_N) {
+      for (kk = 0; kk < MT_N - MT_M; kk++) {
+        y = (mt[kk] & MT_UPPER_MASK) | (mt[kk + 1] & MT_LOWER_MASK);
+        mt[kk] = (mt[kk + MT_M] ^ (y >>> 1) ^ ((y & 1) ? MT_MATRIX_A : 0)) >>> 0;
+      }
+      for (; kk < MT_N - 1; kk++) {
+        y = (mt[kk] & MT_UPPER_MASK) | (mt[kk + 1] & MT_LOWER_MASK);
+        mt[kk] = (mt[kk + (MT_M - MT_N)] ^ (y >>> 1) ^ ((y & 1) ? MT_MATRIX_A : 0)) >>> 0;
+      }
+      y = (mt[MT_N - 1] & MT_UPPER_MASK) | (mt[0] & MT_LOWER_MASK);
+      mt[MT_N - 1] = (mt[MT_M - 1] ^ (y >>> 1) ^ ((y & 1) ? MT_MATRIX_A : 0)) >>> 0;
+      this.mti = 0;
+    }
+    y = mt[this.mti++];
+    y = (y ^ (y >>> 11)) >>> 0;
+    y = (y ^ ((y << 7) & 0x9d2c5680)) >>> 0;
+    y = (y ^ ((y << 15) & 0xefc60000)) >>> 0;
+    y = (y ^ (y >>> 18)) >>> 0;
+    return y;
+  };
+
+  /** CPython: getrandbits(k)，k <= 53 时结果精确 */
+  CPrng.prototype.getrandbits = function (k) {
+    var words = Math.floor((k - 1) / 32) + 1;
+    var result = 0, shift = 0, kk = k, i, r;
+    for (i = 0; i < words; i++, kk -= 32) {
+      r = this._next();
+      if (kk < 32) r = r >>> (32 - kk);
+      result += r * Math.pow(2, shift);
+      shift += 32;
+    }
+    return result;
+  };
+
+  /** CPython: Random._randbelow_with_getrandbits(n) */
+  CPrng.prototype.randbelow = function (n) {
+    if (!n) return 0;
+    var k = 32 - Math.clz32(n);
+    var r = this.getrandbits(k);
+    while (r >= n) r = this.getrandbits(k);
+    return r;
+  };
+
+  /** CPython 3.x: random.shuffle(x) —— 原地洗牌 */
+  CPrng.prototype.shuffle = function (x) {
+    var i, j, t;
+    for (i = x.length - 1; i > 0; i--) {
+      j = this.randbelow(i + 1);
+      t = x[i]; x[i] = x[j]; x[j] = t;
+    }
+    return x;
+  };
+
+  /** CPython: random.random()（53 位精度，供 py2 兼容模式使用） */
+  CPrng.prototype.random = function () {
+    var a = this._next() >>> 5, b = this._next() >>> 6;
+    return (a * 67108864 + b) * (1 / 9007199254740992);
+  };
+
+  /** Python 2 版 shuffle：x[i], x[j] = x[j], x[i]，其中 j = int(random()*(i+1)) */
+  CPrng.prototype.oldShuffle = function (x) {
+    var i, j, t;
+    for (i = x.length - 1; i > 0; i--) {
+      j = Math.trunc(this.random() * (i + 1));
+      t = x[i]; x[i] = x[j]; x[j] = t;
+    }
+    return x;
+  };
+
+  /* =========================================================================
+   * 2. FFT —— 任意长度一维 FFT（radix-2 + Bluestein）与二维 FFT
+   * ======================================================================= */
+
+  function nextPow2(n) {
+    var m = 1;
+    while (m < n) m <<= 1;
+    return m;
+  }
+
+  /** radix-2 迭代 FFT，复杂度 O(n log n)，n 必须是 2 的幂 */
+  function makeRadix2(n) {
+    var levels = Math.round(Math.log2(n));
+    var rev = new Uint32Array(n);
+    var i, b, r;
+    for (i = 0; i < n; i++) {
+      r = 0;
+      for (b = 0; b < levels; b++) if (i & (1 << b)) r |= 1 << (levels - 1 - b);
+      rev[i] = r;
+    }
+    // 每一级的旋转因子表
+    var cosT = [], sinT = [], s, half, k;
+    for (s = 1; s <= levels; s++) {
+      half = 1 << (s - 1);
+      var c = new Float64Array(half), si = new Float64Array(half);
+      for (k = 0; k < half; k++) {
+        var ang = -2 * Math.PI * k / (1 << s);
+        c[k] = Math.cos(ang);
+        si[k] = Math.sin(ang);
+      }
+      cosT.push(c); sinT.push(si);
+    }
+
+    function transform(re, im, invert) {
+      var i, j, t, s, m, half, k, jj, c, si, wr, wi, a, bb, tr, ti;
+      for (i = 0; i < n; i++) {
+        j = rev[i];
+        if (j > i) {
+          t = re[i]; re[i] = re[j]; re[j] = t;
+          t = im[i]; im[i] = im[j]; im[j] = t;
+        }
+      }
+      for (s = 1; s <= levels; s++) {
+        m = 1 << s; half = m >> 1;
+        c = cosT[s - 1]; si = sinT[s - 1];
+        for (k = 0; k < n; k += m) {
+          for (jj = 0; jj < half; jj++) {
+            wr = c[jj];
+            wi = invert ? -si[jj] : si[jj];
+            a = k + jj; bb = a + half;
+            tr = re[bb] * wr - im[bb] * wi;
+            ti = re[bb] * wi + im[bb] * wr;
+            re[bb] = re[a] - tr; im[bb] = im[a] - ti;
+            re[a] += tr; im[a] += ti;
+          }
+        }
+      }
+      if (invert) {
+        var inv = 1 / n;
+        for (i = 0; i < n; i++) { re[i] *= inv; im[i] *= inv; }
+      }
+    }
+
+    return {
+      n: n,
+      forward: function (re, im) { transform(re, im, false); },
+      inverse: function (re, im) { transform(re, im, true); }
+    };
+  }
+
+  /**
+   * Bluestein（chirp-z）变换：把任意长度的 DFT 转成 2 的幂次长度的循环卷积。
+   *   X[k] = e^{-i·pi·k^2/N} · Σ_n (x[n]·e^{-i·pi·n^2/N}) · e^{+i·pi·(k-n)^2/N}
+   */
+  function makeBluestein(n) {
+    var m = nextPow2(2 * n - 1);
+    var fft = makeRadix2(m);
+    var chirpRe = new Float64Array(n), chirpIm = new Float64Array(n);
+    var k, k2, ang;
+    for (k = 0; k < n; k++) {
+      k2 = (k * k) % (2 * n);          // 用取模保证相位参数始终是小量，避免精度损失
+      ang = -Math.PI * k2 / n;
+      chirpRe[k] = Math.cos(ang);
+      chirpIm[k] = Math.sin(ang);
+    }
+    // 卷积核 B = FFT(conj(chirp)) 的对称扩展，预先算好
+    var Br = new Float64Array(m), Bi = new Float64Array(m);
+    Br[0] = chirpRe[0];
+    Bi[0] = -chirpIm[0];
+    for (k = 1; k < n; k++) {
+      Br[k] = chirpRe[k]; Bi[k] = -chirpIm[k];
+      Br[m - k] = chirpRe[k]; Bi[m - k] = -chirpIm[k];
+    }
+    fft.forward(Br, Bi);
+
+    var ar = new Float64Array(m), ai = new Float64Array(m);
+
+    function forward(re, im) {
+      var k, xr, xi, cr, ci;
+      for (k = 0; k < n; k++) {
+        xr = re[k]; xi = im[k];
+        cr = chirpRe[k]; ci = chirpIm[k];
+        ar[k] = xr * cr - xi * ci;
+        ai[k] = xr * ci + xi * cr;
+      }
+      ar.fill(0, n); ai.fill(0, n);
+      fft.forward(ar, ai);
+      for (k = 0; k < m; k++) {
+        xr = ar[k]; xi = ai[k];
+        ar[k] = xr * Br[k] - xi * Bi[k];
+        ai[k] = xr * Bi[k] + xi * Br[k];
+      }
+      fft.inverse(ar, ai);
+      for (k = 0; k < n; k++) {
+        xr = ar[k]; xi = ai[k];
+        cr = chirpRe[k]; ci = chirpIm[k];
+        re[k] = xr * cr - xi * ci;
+        im[k] = xr * ci + xi * cr;
+      }
+    }
+
+    function inverse(re, im) {
+      // ifft(X) = conj( fft( conj(X) ) ) / n
+      var i;
+      for (i = 0; i < n; i++) im[i] = -im[i];
+      forward(re, im);
+      var inv = 1 / n;
+      for (i = 0; i < n; i++) { re[i] *= inv; im[i] = -im[i] * inv; }
+    }
+
+    return { n: n, forward: forward, inverse: inverse };
+  }
+
+  /** 按长度选择合适的 1D FFT 实现 */
+  function makeFft1D(n) {
+    if (n > 0 && (n & (n - 1)) === 0) return makeRadix2(n);
+    return makeBluestein(n);
+  }
+
+  /**
+   * 二维 FFT 计划。数据为一维 Float64Array（行优先，长度 H*W）。
+   * 先对每一行做长度为 W 的 1D FFT，再对每一列做长度为 H 的 1D FFT。
+   * 同步版本与异步版本共用同一份实现。
+   */
+  function makeFft2D(H, W) {
+    var fw = makeFft1D(W);
+    var fh = makeFft1D(H);
+    var bufLen = Math.max(H, W);
+    var bufRe = new Float64Array(bufLen);
+    var bufIm = new Float64Array(bufLen);
+    var sre = bufRe.subarray(0, W), sim = bufIm.subarray(0, W);
+    var cre = bufRe.subarray(0, H), cim = bufIm.subarray(0, H);
+
+    function rows(re, im, invert) {
+      var h, i, off;
+      for (h = 0; h < H; h++) {
+        off = h * W;
+        for (i = 0; i < W; i++) { sre[i] = re[off + i]; sim[i] = im[off + i]; }
+        if (invert) fw.inverse(sre, sim); else fw.forward(sre, sim);
+        for (i = 0; i < W; i++) { re[off + i] = sre[i]; im[off + i] = sim[i]; }
+      }
+    }
+
+    function cols(re, im, invert) {
+      var w, i;
+      for (w = 0; w < W; w++) {
+        for (i = 0; i < H; i++) { cre[i] = re[i * W + w]; cim[i] = im[i * W + w]; }
+        if (invert) fh.inverse(cre, cim); else fh.forward(cre, cim);
+        for (i = 0; i < H; i++) { re[i * W + w] = cre[i]; im[i * W + w] = cim[i]; }
+      }
+    }
+
+    function transform(re, im, invert) { rows(re, im, invert); cols(re, im, invert); }
+
+    /** 异步版本：按行/列分块，块之间 await 让出主线程，便于刷新进度条 */
+    function transformAsync(re, im, invert, tick) {
+      var CHUNK = 24;
+      var step = 0;
+      var h = 0, w = 0, i, off;
+      function next() {
+        if (step === 0) {
+          while (h < H) {
+            off = h * W;
+            for (i = 0; i < W; i++) { sre[i] = re[off + i]; sim[i] = im[off + i]; }
+            if (invert) fw.inverse(sre, sim); else fw.forward(sre, sim);
+            for (i = 0; i < W; i++) { re[off + i] = sre[i]; im[off + i] = sim[i]; }
+            h++;
+            if (h % CHUNK === 0 && h < H) return tick(0.5 * h / H).then(next);
+          }
+          step = 1;
+        }
+        if (step === 1) {
+          while (w < W) {
+            for (i = 0; i < H; i++) { cre[i] = re[i * W + w]; cim[i] = im[i * W + w]; }
+            if (invert) fh.inverse(cre, cim); else fh.forward(cre, cim);
+            for (i = 0; i < H; i++) { re[i * W + w] = cre[i]; im[i * W + w] = cim[i]; }
+            w++;
+            if (w % CHUNK === 0 && w < W) return tick(0.5 + 0.5 * w / W).then(next);
+          }
+        }
+        return Promise.resolve();
+      }
+      return next();
+    }
+
+    return { H: H, W: W, transform: transform, transformAsync: transformAsync };
+  }
+
+  /* =========================================================================
+   * 3. 图像数据工具（RGBA <-> BGR 平面）
+   *    OpenCV 用 BGR 顺序，这里保持一致，便于与 Python 端互通。
+   * ======================================================================= */
+
+  /**
+   * @param {Uint8ClampedArray} rgba 长度 w*h*4
+   * @param {number} w
+   * @param {number} h
+   * @param {{r:number,g:number,b:number}|null} backdrop 透明像素的合成底色，null 表示忽略 alpha
+   * @returns {{w:number,h:number,planes:Float64Array[]}} planes[0]=B, [1]=G, [2]=R
+   */
+  function rgbaToPlanes(rgba, w, h, backdrop) {
+    var n = w * h;
+    var B = new Float64Array(n), G = new Float64Array(n), R = new Float64Array(n);
+    var i, p, r, g, b, a, br, bg, bb;
+    if (backdrop) { br = backdrop.r; bg = backdrop.g; bb = backdrop.b; }
+    for (i = 0, p = 0; i < n; i++, p += 4) {
+      r = rgba[p]; g = rgba[p + 1]; b = rgba[p + 2]; a = rgba[p + 3];
+      if (a !== 255 && backdrop) {
+        var t = a / 255;
+        r = r * t + br * (1 - t);
+        g = g * t + bg * (1 - t);
+        b = b * t + bb * (1 - t);
+      }
+      B[i] = b; G[i] = g; R[i] = r;
+    }
+    return { w: w, h: h, planes: [B, G, R] };
+  }
+
+  /** 平面数据写回 RGBA（自动 clamp + 四舍五入） */
+  function planesToRgba(img, out) {
+    var n = img.w * img.h;
+    var B = img.planes[0], G = img.planes[1], R = img.planes[2];
+    var rgba = out || new Uint8ClampedArray(n * 4);
+    var i, p;
+    for (i = 0, p = 0; i < n; i++, p += 4) {
+      rgba[p] = clampRound(R[i]);
+      rgba[p + 1] = clampRound(G[i]);
+      rgba[p + 2] = clampRound(B[i]);
+      rgba[p + 3] = 255;
+    }
+    return rgba;
+  }
+
+  /** 对齐 OpenCV saturate_cast<uchar>：clamp 到 [0,255] 并取整（银行家舍入） */
+  function clampRound(x) {
+    if (x <= 0) return 0;
+    if (x >= 255) return 255;
+    var f = Math.floor(x), diff = x - f;
+    if (diff > 0.5) return f + 1;
+    if (diff < 0.5) return f;
+    return (f % 2 === 0) ? f : f + 1;
+  }
+
+  /**
+   * 对齐 numpy 的 np.uint8(x)：向零截断（实测 np.uint8(127.5)==127）。
+   * numpy 对越界值会抛 OverflowError，这里取更宽容的 clamp 行为。
+   */
+  function pyUint8(x) {
+    if (!isFinite(x)) return 0;
+    if (x <= 0) return 0;
+    if (x >= 255) return 255;
+    return Math.trunc(x);
+  }
+
+  /* =========================================================================
+   * 3.5 复数图像变换
+   *
+   *  原作 bwmforpy3.py 里写的是 np.fft.fft2(img)，而 img 的形状是 (H, W, 3)。
+   *  numpy 的 fft2 默认 axes=(-2, -1)，也就是 (1, 2) 两根轴 ——
+   *  于是实际的变换轴是「宽度轴」和「通道轴」，等价于对每一行独立做 (W, 3)
+   *  的二维变换，而不是"每个颜色通道各做一次空间二维变换"。
+   *
+   *  这一点必须复刻，否则网页端与 Python 端互不相通，所以提供两种模式：
+   *    transform: 'numpy'   —— 复刻上述行为（默认，可与 Python 互解）
+   *    transform: 'channel' —— 每通道独立空间二维变换（教科书做法）
+   * ======================================================================= */
+
+  function zerosPlanes(L) {
+    return [new Float64Array(L), new Float64Array(L), new Float64Array(L)];
+  }
+
+  /**
+   * 对 (H, W, 3) 的复数图像数据做二维正/逆变换，原地修改 cx。
+   * @param {{re: Float64Array[], im: Float64Array[]}} cx
+   */
+  function transformImage(cx, H, W, invert, mode, tick) {
+    var tickFn = tick || function () { return Promise.resolve(); };
+    var c, k;
+
+    if (mode === 'channel') {
+      var plan = makeFft2D(H, W);
+      c = 0;
+      function stepC() {
+        if (c >= 3) return Promise.resolve();
+        var idx = c;
+        return plan.transformAsync(cx.re[idx], cx.im[idx], invert, function (p) {
+          return tickFn((idx + p) / 3);
+        }).then(function () {
+          c++;
+          return tickFn(c / 3).then(stepC);
+        });
+      }
+      return stepC();
+    }
+
+    // numpy 模式：逐行处理 (W, 3) 平面
+    var planRow = makeFft2D(W, 3);
+    var bufRe = new Float64Array(W * 3), bufIm = new Float64Array(W * 3);
+    var h = 0, CHUNK = 64;
+    function nextRow() {
+      while (h < H) {
+        var j, base;
+        for (j = 0; j < W; j++) {
+          base = h * W + j;
+          for (k = 0; k < 3; k++) {
+            bufRe[j * 3 + k] = cx.re[k][base];
+            bufIm[j * 3 + k] = cx.im[k][base];
+          }
+        }
+        planRow.transform(bufRe, bufIm, invert);
+        for (j = 0; j < W; j++) {
+          base = h * W + j;
+          for (k = 0; k < 3; k++) {
+            cx.re[k][base] = bufRe[j * 3 + k];
+            cx.im[k][base] = bufIm[j * 3 + k];
+          }
+        }
+        h++;
+        if (h % CHUNK === 0 && h < H) return tickFn(h / H).then(nextRow);
+      }
+      return Promise.resolve();
+    }
+    return nextRow();
+  }
+
+  /** 把平面像素装进复数容器 */
+  function planesToComplex(planes, H, W) {
+    var L = H * W;
+    var cx = { re: zerosPlanes(L), im: zerosPlanes(L) };
+    for (var c = 0; c < 3; c++) cx.re[c].set(planes[c]);
+    return cx;
+  }
+
+  /* =========================================================================
+   * 4. 水印图案构造
+   * ======================================================================= */
+
+  /**
+   * 生成被打散的半高图案 hwm（长度 Hh*W*3）以及镜像后的 rwm（长度 H*W*3）。
+   * 完全对应 bwmforpy3.py 中 encode 的前半部分。
+   */
+  function buildPattern(H, W, wm, opts) {
+    var Hh = Math.floor(H * 0.5);
+    var wh = wm.h, ww = wm.w;
+    var C = 3, c, i, j;
+
+    // hwm2：把水印贴到 (Hh, W) 画布的左上角
+    var hwm2 = [];
+    for (c = 0; c < C; c++) hwm2.push(new Float64Array(Hh * W));
+    for (i = 0; i < wh; i++) {
+      for (j = 0; j < ww; j++) {
+        for (c = 0; c < C; c++) hwm2[c][i * W + j] = wm.planes[c][i * ww + j];
+      }
+    }
+
+    // 随机排列
+    var rng = new CPrng().seed(opts.seed);
+    var m = new Array(Hh), n = new Array(W);
+    for (i = 0; i < Hh; i++) m[i] = i;
+    for (j = 0; j < W; j++) n[j] = j;
+    if (opts.oldSeed) { rng.oldShuffle(m); rng.oldShuffle(n); }
+    else { rng.shuffle(m); rng.shuffle(n); }
+
+    // hwm[i][j] = hwm2[m[i]][n[j]]
+    var hwm = [];
+    for (c = 0; c < C; c++) hwm.push(new Float64Array(Hh * W));
+    for (i = 0; i < Hh; i++) {
+      var mi = m[i] * W;
+      var ii = i * W;
+      for (j = 0; j < W; j++) {
+        var src = mi + n[j];
+        for (c = 0; c < C; c++) hwm[c][ii + j] = hwm2[c][src];
+      }
+    }
+
+    // rwm：上半部填 hwm，同时镜像到 (H-1-i, W-1-j)
+    var rwm = [];
+    for (c = 0; c < C; c++) rwm.push(new Float64Array(H * W));
+    for (i = 0; i < Hh; i++) {
+      var ii2 = i * W;
+      var ri = (H - 1 - i) * W;
+      for (j = 0; j < W; j++) {
+        var rj = W - 1 - j;
+        for (c = 0; c < C; c++) {
+          var v = hwm[c][ii2 + j];
+          rwm[c][ii2 + j] = v;
+          rwm[c][ri + rj] = v;
+        }
+      }
+    }
+    return { hwm: hwm, rwm: rwm, m: m, n: n, Hh: Hh };
+  }
+
+  /** 生成 m / n 排列（decode 端只需要排列，不需要图案） */
+  function buildPermutation(H, W, opts) {
+    var Hh = Math.floor(H * 0.5);
+    var rng = new CPrng().seed(opts.seed);
+    var m = new Array(Hh), n = new Array(W), i;
+    for (i = 0; i < Hh; i++) m[i] = i;
+    for (i = 0; i < W; i++) n[i] = i;
+    if (opts.oldSeed) { rng.oldShuffle(m); rng.oldShuffle(n); }
+    else { rng.shuffle(m); rng.shuffle(n); }
+    return { m: m, n: n, Hh: Hh };
+  }
+
+  /* =========================================================================
+   * 5. 合成（encode）
+   * ======================================================================= */
+
+  /**
+   * 合成：image + watermark -> image(encoded)
+   * @param {{w,h,planes}} img   原图（0..255）
+   * @param {{w,h,planes}} wm    水印图（0..255）
+   * @param {{seed:number, alpha:number, oldSeed:boolean, transform:string}} opts
+   * @returns {Promise<{float:{w,h,planes}, hwm, rwm, m, n}>}
+   */
+  function encode(img, wm, opts, tick) {
+    var H = img.h, W = img.w;
+    var Hh = Math.floor(H * 0.5);
+    if (wm.h >= Hh || wm.w >= W) {
+      throw new Error('水印尺寸过大：需要高 < ' + Hh + ' 且宽 < ' + W
+        + '（当前原图 ' + W + '×' + H + '，水印 ' + wm.w + '×' + wm.h + '）');
+    }
+    var tickFn = tick || function () { return Promise.resolve(); };
+    var mode = opts.transform === 'channel' ? 'channel' : 'numpy';
+    var L = H * W;
+    var pat = buildPattern(H, W, wm, opts);
+    var cx = planesToComplex(img.planes, H, W);
+    var c, k;
+
+    return transformImage(cx, H, W, false, mode, function (p) {
+      return tickFn(p * 0.5);
+    }).then(function () {
+      // f2 = f1 + alpha * rwm（rwm 是实数组，只加到频域实部上）
+      for (c = 0; c < 3; c++) {
+        var rw = pat.rwm[c], re = cx.re[c], alpha = opts.alpha;
+        for (k = 0; k < L; k++) re[k] += alpha * rw[k];
+      }
+      return transformImage(cx, H, W, true, mode, function (p) {
+        return tickFn(0.5 + p * 0.5);
+      });
+    }).then(function () {
+      // img_wm = real(ifft2(f2))，虚部按算法被丢弃
+      return {
+        float: { w: W, h: H, planes: cx.re.slice() },
+        hwm: pat.hwm, rwm: pat.rwm, m: pat.m, n: pat.n
+      };
+    });
+  }
+
+  /* =========================================================================
+   * 6. 分离（decode）
+   * ======================================================================= */
+
+  /**
+   * 分离：image + image(encoded) -> watermark
+   * @param {{w,h,planes}} img    原图
+   * @param {{w,h,planes}} imgWm  含水印图
+   * @param {{seed,alpha,oldSeed,transform,quantize}} opts
+   *        quantize: 'py'（取模，对齐 numpy.uint8）| 'clamp'
+   */
+  function decode(img, imgWm, opts, tick) {
+    var H = img.h, W = img.w;
+    var tickFn = tick || function () { return Promise.resolve(); };
+    var mode = opts.transform === 'channel' ? 'channel' : 'numpy';
+    var perm = buildPermutation(H, W, opts);
+    var m = perm.m, n = perm.n, Hh = perm.Hh;
+    var useRound = opts.quantize === 'round';
+    var L = H * W;
+
+    var c1 = planesToComplex(img.planes, H, W);
+    var c2 = planesToComplex(imgWm.planes, H, W);
+
+    return transformImage(c1, H, W, false, mode, function (p) {
+      return tickFn(p * 0.45);
+    }).then(function () {
+      return transformImage(c2, H, W, false, mode, function (p) {
+        return tickFn(0.45 + p * 0.45);
+      });
+    }).then(function () {
+      // rwm = real((f2 - f1) / alpha)
+      var rawPlanes = zerosPlanes(L);
+      var inv = 1 / opts.alpha, c, k;
+      for (c = 0; c < 3; c++) {
+        var f1 = c1.re[c], f2 = c2.re[c], out = rawPlanes[c];
+        for (k = 0; k < L; k++) out[k] = (f2[k] - f1[k]) * inv;
+      }
+      return tickFn(0.9).then(function () { return rawPlanes; });
+    }).then(function (rawPlanes) {
+      // 逆排列：wm[m[i]][n[j]] = uint8(rwm[i][j])
+      var wmPlanes = zerosPlanes(L), i, j, c2i;
+      for (i = 0; i < Hh; i++) {
+        var src = i * W;
+        for (j = 0; j < W; j++) {
+          var dst = m[i] * W + n[j];
+          for (c2i = 0; c2i < 3; c2i++) {
+            var v = rawPlanes[c2i][src + j];
+            wmPlanes[c2i][dst] = useRound ? clampRound(v) : pyUint8(v);
+          }
+        }
+      }
+      // 下半部镜像
+      for (i = 0; i < Hh; i++) {
+        var s2 = i * W, d2 = (H - 1 - i) * W;
+        for (j = 0; j < W; j++) {
+          var dj = W - 1 - j;
+          for (c2i = 0; c2i < 3; c2i++) wmPlanes[c2i][d2 + dj] = wmPlanes[c2i][s2 + j];
+        }
+      }
+      return {
+        wm: { w: W, h: H, planes: wmPlanes },
+        raw: rawPlanes,
+        f1: c1, f2: c2,
+        Hh: Hh
+      };
+    });
+  }
+
+  /* =========================================================================
+   * 7. 检测
+   * ======================================================================= */
+
+  /** 归一化互相关系数 */
+  function ncc(a, b) {
+    var n = a.length, i, ma = 0, mb = 0;
+    for (i = 0; i < n; i++) { ma += a[i]; mb += b[i]; }
+    ma /= n; mb /= n;
+    var num = 0, da = 0, db = 0, x, y;
+    for (i = 0; i < n; i++) {
+      x = a[i] - ma; y = b[i] - mb;
+      num += x * y; da += x * x; db += y * y;
+    }
+    if (da === 0 || db === 0) return 0;
+    return num / Math.sqrt(da * db);
+  }
+
+  /**
+   * 精确检测：需要原图。
+   * 核心判据 —— 该算法把水印直接叠加在频域的"实部"上，
+   * 因此 d = fft(img_wm) - fft(img) 在理想情况下是纯实数的；
+   * 若图中没有水印，d 完全来自量化/压缩误差，实部与虚部能量相当。
+   * 于是 sqrt(E_re / E_im) 就是一个干净的存在性指标：
+   *   ≈ 1        —— 没有水印（残差是复噪声）
+   *   >> 1       —— 存在水印（残差被强制成实值）
+   */
+  function detectPair(img, imgWm, opts, tick) {
+    var H = img.h, W = img.w;
+    var tickFn = tick || function () { return Promise.resolve(); };
+    var mode = opts.transform === 'channel' ? 'channel' : 'numpy';
+    var L = H * W;
+    var c1 = planesToComplex(img.planes, H, W);
+    var c2 = planesToComplex(imgWm.planes, H, W);
+
+    return transformImage(c1, H, W, false, mode, function (p) {
+      return tickFn(p * 0.45);
+    }).then(function () {
+      return transformImage(c2, H, W, false, mode, function (p) {
+        return tickFn(0.45 + p * 0.45);
+      });
+    }).then(function () {
+      var eRe = 0, eIm = 0, c, k;
+      for (c = 0; c < 3; c++) {
+        var a = c1.re[c], b = c1.im[c], d = c2.re[c], e = c2.im[c];
+        for (k = 0; k < L; k++) {
+          var dr = d[k] - a[k], di = e[k] - b[k];
+          eRe += dr * dr;
+          eIm += di * di;
+        }
+      }
+      var ratio = eIm > 0 ? Math.sqrt(eRe / eIm) : Infinity;
+      return tickFn(1).then(function () {
+        return { eRe: eRe, eIm: eIm, ratio: ratio };
+      });
+    });
+  }
+
+  /** 计算径向平均功率谱（用于无原图时的启发式盲检） */
+  function radialSpectrum(img, tick) {
+    var H = img.h, W = img.w;
+    var tickFn = tick || function () { return Promise.resolve(); };
+    // 灰度化 + 去均值 + Hann 窗
+    var L = H * W;
+    var g = new Float64Array(L), i, j, k;
+    for (k = 0; k < L; k++) g[k] = (img.planes[0][k] + img.planes[1][k] + img.planes[2][k]) / 3;
+    var mean = 0;
+    for (k = 0; k < L; k++) mean += g[k];
+    mean /= L;
+    for (i = 0; i < H; i++) {
+      var wy = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / (H - 1));
+      for (j = 0; j < W; j++) {
+        var wx = 0.5 - 0.5 * Math.cos(2 * Math.PI * j / (W - 1));
+        g[i * W + j] = (g[i * W + j] - mean) * wx * wy;
+      }
+    }
+    var im = new Float64Array(L);
+    var plan = makeFft2D(H, W);
+    return plan.transformAsync(g, im, false, tickFn).then(function () {
+      var nb = 48;
+      var sum = new Float64Array(nb), cnt = new Float64Array(nb);
+      var maxR = Math.min(H, W) / 2;
+      for (i = 0; i < H; i++) {
+        var fy = i <= H / 2 ? i : i - H;
+        for (j = 0; j < W; j++) {
+          var fx = j <= W / 2 ? j : j - W;
+          var r = Math.sqrt(fx * fx + fy * fy) / maxR;
+          if (r >= 1) continue;
+          var bi = Math.min(nb - 1, Math.floor(r * nb));
+          sum[bi] += g[i * W + j] * g[i * W + j] + im[i * W + j] * im[i * W + j];
+          cnt[bi]++;
+        }
+      }
+      var prof = new Float64Array(nb);
+      for (k = 0; k < nb; k++) prof[k] = cnt[k] > 0 ? sum[k] / cnt[k] : 0;
+      return { profile: prof, bins: nb };
+    });
+  }
+
+  return {
+    CPrng: CPrng,
+    makeFft1D: makeFft1D,
+    makeFft2D: makeFft2D,
+    makeRadix2: makeRadix2,
+    makeBluestein: makeBluestein,
+    zerosPlanes: zerosPlanes,
+    planesToComplex: planesToComplex,
+    transformImage: transformImage,
+    rgbaToPlanes: rgbaToPlanes,
+    planesToRgba: planesToRgba,
+    buildPattern: buildPattern,
+    buildPermutation: buildPermutation,
+    encode: encode,
+    decode: decode,
+    detectPair: detectPair,
+    radialSpectrum: radialSpectrum,
+    ncc: ncc,
+    clampRound: clampRound,
+    pyUint8: pyUint8
+  };
+});
+
+</script>
+<script>
+/*!
+ * 盲水印工坊 — 隐写引擎
+ * ---------------------------------------------------------------------------
+ * 提供两条与 FFT 加法式互补的嵌入路线（两者都**不需要原图**就能提取）：
+ *
+ *  1) DWT-DCT-SVD（鲁棒模式）
+ *     对每个通道做一级 Haar 小波取 LL 子带 -> 分 4x4 块 -> 每块做 DCT ->
+ *     对 DCT 系数矩阵做 SVD -> 用 QIM 把 1 bit 写进最大奇异值 s[0]。
+ *
+ *     QIM（量化索引调制）是关键：
+ *       q  = floor(s0 / delta)
+ *       q' = 2*floor(q/2) + bit          // 只改 s0 所在格点序号的奇偶
+ *       s0' = (q' + 0.5) * delta         // 落在格点中心，离边界有 delta/2 余量
+ *     提取时 s0'/delta 四舍五入回 q'，其奇偶即 bit —— 不需要原始 s0。
+ *     又因为奇异值对图像扰动不敏感，它能扛住 JPEG 压缩与轻微缩放。
+ *
+ *     容量约 (H/8)*(W/8)*3 bit，1024x1024 约 6 KB。
+ *
+ *  2) LSB（大容量模式）
+ *     把数据按位写进像素最低有效位。容量 = W*H*3 bit（1024x1024 约 393 KB），
+ *     同样免原图，但任何有损压缩都会摧毁它 —— 输出必须保持 PNG。
+ *
+ *  两者共用一个 8 字节容器头部，提取时可自动识别用的哪种引擎。
+ */
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) {
+    module.exports = factory(require('./core.js'));
+  } else {
+    root.BWMStego = factory(root.BWM);
+  }
+})(typeof globalThis !== 'undefined' ? globalThis : this, function (BWM) {
+  'use strict';
+
+  /* =========================================================================
+   * 1. 基础数学：4x4 DCT、4x4 SVD、一级 Haar 小波
+   * ======================================================================= */
+
+  // 正交 DCT-II 变换矩阵（N=4）：C[k][n] = sqrt(2/N) * a(k) * cos(pi*(2n+1)k/(2N))
+  var DCT4 = (function () {
+    var N = 4, C = new Float64Array(16), k, n;
+    for (k = 0; k < N; k++) {
+      var a = (k === 0) ? Math.SQRT1_2 : 1.0;
+      for (n = 0; n < N; n++) {
+        C[k * N + n] = Math.sqrt(2.0 / N) * a * Math.cos(Math.PI * (2 * n + 1) * k / (2 * N));
+      }
+    }
+    return C;
+  })();
+
+  /** 2D DCT：dst = C * src * C^T（均按行优先 4x4） */
+  function dct4(src, dst, tmp) {
+    var i, j, k, s;
+    for (i = 0; i < 4; i++) {
+      for (j = 0; j < 4; j++) {
+        s = 0;
+        for (k = 0; k < 4; k++) s += DCT4[i * 4 + k] * src[k * 4 + j];
+        tmp[i * 4 + j] = s;
+      }
+    }
+    for (i = 0; i < 4; i++) {
+      for (j = 0; j < 4; j++) {
+        s = 0;
+        for (k = 0; k < 4; k++) s += tmp[i * 4 + k] * DCT4[j * 4 + k];
+        dst[i * 4 + j] = s;
+      }
+    }
+  }
+
+  /** 逆 2D DCT：dst = C^T * src * C */
+  function idct4(src, dst, tmp) {
+    var i, j, k, s;
+    for (i = 0; i < 4; i++) {
+      for (j = 0; j < 4; j++) {
+        s = 0;
+        for (k = 0; k < 4; k++) s += DCT4[k * 4 + i] * src[k * 4 + j];
+        tmp[i * 4 + j] = s;
+      }
+    }
+    for (i = 0; i < 4; i++) {
+      for (j = 0; j < 4; j++) {
+        s = 0;
+        for (k = 0; k < 4; k++) s += tmp[i * 4 + k] * DCT4[k * 4 + j];
+        dst[i * 4 + j] = s;
+      }
+    }
+  }
+
+  /**
+   * 4x4 实矩阵的单边 Jacobi SVD：a = U * diag(S) * V^T
+   * 只有 4x4，扫几轮就收敛，开销可忽略。
+   */
+  function svd4(a, U, S, V) {
+    var i, j, p, q, sweep;
+    for (i = 0; i < 16; i++) { U[i] = a[i]; V[i] = 0; }
+    V[0] = V[5] = V[10] = V[15] = 1;
+
+    for (sweep = 0; sweep < 30; sweep++) {
+      var off = 0.0;
+      for (p = 0; p < 3; p++) {
+        for (q = p + 1; q < 4; q++) {
+          var alpha = 0.0, beta = 0.0, gamma = 0.0;
+          for (i = 0; i < 4; i++) {
+            var uip = U[i * 4 + p], uiq = U[i * 4 + q];
+            alpha += uip * uip;
+            beta += uiq * uiq;
+            gamma += uip * uiq;
+          }
+          off += gamma * gamma;
+          if (gamma === 0 || Math.abs(gamma) < 1e-14 * Math.sqrt(alpha * beta)) continue;
+
+          var zeta = (beta - alpha) / (2.0 * gamma);
+          var t = (zeta >= 0 ? 1.0 : -1.0) / (Math.abs(zeta) + Math.sqrt(1.0 + zeta * zeta));
+          var c = 1.0 / Math.sqrt(1.0 + t * t);
+          var s = c * t;
+
+          for (i = 0; i < 4; i++) {
+            var a1 = U[i * 4 + p], a2 = U[i * 4 + q];
+            U[i * 4 + p] = c * a1 - s * a2;
+            U[i * 4 + q] = s * a1 + c * a2;
+            var b1 = V[i * 4 + p], b2 = V[i * 4 + q];
+            V[i * 4 + p] = c * b1 - s * b2;
+            V[i * 4 + q] = s * b1 + c * b2;
+          }
+        }
+      }
+      if (off < 1e-24) break;
+    }
+
+    for (j = 0; j < 4; j++) {
+      var norm = 0.0;
+      for (i = 0; i < 4; i++) norm += U[i * 4 + j] * U[i * 4 + j];
+      norm = Math.sqrt(norm);
+      S[j] = norm;
+      if (norm > 1e-300) {
+        for (i = 0; i < 4; i++) U[i * 4 + j] /= norm;
+      }
+    }
+
+    // Jacobi 不保证列的顺序，但 QIM 依赖 s[0] 是最大奇异值，
+    // 所以这里按降序重排，并同步交换 U、V 的对应列（不改变 A = U S V^T）。
+    for (i = 0; i < 3; i++) {
+      var mi = i;
+      for (j = i + 1; j < 4; j++) if (S[j] > S[mi]) mi = j;
+      if (mi !== i) {
+        var ts = S[i]; S[i] = S[mi]; S[mi] = ts;
+        for (var r = 0; r < 4; r++) {
+          var tu = U[r * 4 + i]; U[r * 4 + i] = U[r * 4 + mi]; U[r * 4 + mi] = tu;
+          var tv = V[r * 4 + i]; V[r * 4 + i] = V[r * 4 + mi]; V[r * 4 + mi] = tv;
+        }
+      }
+    }
+  }
+
+  /** 由 U, S, V 重构：out = U * diag(S) * V^T */
+  function svd4Reconstruct(U, S, V, out) {
+    var i, j, k, sum;
+    for (i = 0; i < 4; i++) {
+      for (j = 0; j < 4; j++) {
+        sum = 0.0;
+        for (k = 0; k < 4; k++) sum += U[i * 4 + k] * S[k] * V[j * 4 + k];
+        out[i * 4 + j] = sum;
+      }
+    }
+  }
+
+  /** 一级 Haar 二维小波分解，输入 W*H，输出四个 (W/2)*(H/2) 子带 */
+  function haarDwt2(plane, W, H, sub) {
+    var hw = W >> 1, hh = H >> 1;
+    var LL = sub.LL, LH = sub.LH, HL = sub.HL, HH = sub.HH;
+    for (var y = 0; y < hh; y++) {
+      var r0 = (y << 1) * W, r1 = r0 + W, o = y * hw;
+      for (var x = 0; x < hw; x++) {
+        var c0 = x << 1;
+        var a = plane[r0 + c0], b = plane[r0 + c0 + 1];
+        var c = plane[r1 + c0], d = plane[r1 + c0 + 1];
+        LL[o + x] = (a + b + c + d) * 0.5;
+        LH[o + x] = (a - b + c - d) * 0.5;
+        HL[o + x] = (a + b - c - d) * 0.5;
+        HH[o + x] = (a - b - c + d) * 0.5;
+      }
+    }
+  }
+
+  /** 一级 Haar 重构 */
+  function haarIdwt2(out, W, H, sub) {
+    var hw = W >> 1, hh = H >> 1;
+    var LL = sub.LL, LH = sub.LH, HL = sub.HL, HH = sub.HH;
+    for (var y = 0; y < hh; y++) {
+      var r0 = (y << 1) * W, r1 = r0 + W, o = y * hw;
+      for (var x = 0; x < hw; x++) {
+        var c0 = x << 1;
+        var l = LL[o + x], p = LH[o + x], q = HL[o + x], s = HH[o + x];
+        out[r0 + c0] = (l + p + q + s) * 0.5;
+        out[r0 + c0 + 1] = (l - p + q - s) * 0.5;
+        out[r1 + c0] = (l + p - q - s) * 0.5;
+        out[r1 + c0 + 1] = (l - p - q + s) * 0.5;
+      }
+    }
+  }
+
+  /* =========================================================================
+   * 2. 容器格式
+   * ======================================================================= */
+
+  var MAGIC0 = 0xB7, MAGIC1 = 0x4D;
+  var METHOD_ROBUST = 1, METHOD_LSB = 2;
+  var TYPE_TEXT = 0, TYPE_FILE = 1, TYPE_IMAGE = 2;
+  var HEADER_BYTES = 10;
+  var DEFAULT_DELTA = 36.0;
+
+  function packContainer(method, contentType, payload) {
+    var out = new Uint8Array(HEADER_BYTES + payload.length);
+    out[0] = MAGIC0;
+    out[1] = MAGIC1;
+    out[2] = 1;
+    out[3] = method;
+    out[4] = contentType;
+    out[5] = 0;
+    var len = payload.length;
+    out[6] = (len >>> 24) & 0xFF;
+    out[7] = (len >>> 16) & 0xFF;
+    out[8] = (len >>> 8) & 0xFF;
+    out[9] = len & 0xFF;
+    out.set(payload, HEADER_BYTES);
+    return out;
+  }
+
+  function readHeader(bytes) {
+    if (!bytes || bytes.length < HEADER_BYTES) return null;
+    if (bytes[0] !== MAGIC0 || bytes[1] !== MAGIC1) return null;
+    var len = ((bytes[6] << 24) | (bytes[7] << 16) | (bytes[8] << 8) | bytes[9]) >>> 0;
+    return { version: bytes[2], method: bytes[3], contentType: bytes[4], length: len };
+  }
+
+  /* =========================================================================
+   * 3. 工具
+   * ======================================================================= */
+
+  function bytesToBits(bytes) {
+    var bits = new Uint8Array(bytes.length * 8), i, b;
+    for (i = 0; i < bytes.length; i++) {
+      for (b = 0; b < 8; b++) bits[i * 8 + b] = (bytes[i] >> (7 - b)) & 1;
+    }
+    return bits;
+  }
+
+  function bitsToBytes(bits, byteCount) {
+    var out = new Uint8Array(byteCount), i, b;
+    for (i = 0; i < byteCount; i++) {
+      var v = 0;
+      for (b = 0; b < 8; b++) v = (v << 1) | (bits[i * 8 + b] & 1);
+      out[i] = v;
+    }
+    return out;
+  }
+
+  /** 用密码驱动的置换打散写入位置，避免局部损坏波及连续的一段数据 */
+  function makeOrder(n, password, cache) {
+    var key = 'o' + n + '_' + (password >>> 0);
+    if (cache && cache[key]) return cache[key];
+    var order = new Int32Array(n), i;
+    for (i = 0; i < n; i++) order[i] = i;
+    if (password) {
+      // 注意：core.js 里的 CPrng 构造函数不接收种子，必须用 .seed() 播种。
+      // 若写成 new CPrng(seed) 会得到一个未播种的实例，导致所有密码产生同一乱序。
+      var rng = new BWM.CPrng().seed(password >>> 0);
+      for (i = n - 1; i > 0; i--) {
+        var j = rng.randbelow(i + 1);
+        var t = order[i]; order[i] = order[j]; order[j] = t;
+      }
+    }
+    if (cache) cache[key] = order;
+    return order;
+  }
+
+  function utf8Encode(str) {
+    if (typeof TextEncoder !== 'undefined') return new TextEncoder().encode(str);
+    var bytes = [], i, c;
+    for (i = 0; i < str.length; i++) {
+      c = str.charCodeAt(i);
+      if (c < 0x80) bytes.push(c);
+      else if (c < 0x800) bytes.push(0xC0 | (c >> 6), 0x80 | (c & 63));
+      else if (c < 0xD800 || c >= 0xE000) {
+        bytes.push(0xE0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));
+      } else {
+        i++;
+        var cc = 0x10000 + (((c & 0x3FF) << 10) | (str.charCodeAt(i) & 0x3FF));
+        bytes.push(0xF0 | (cc >> 18), 0x80 | ((cc >> 12) & 63),
+          0x80 | ((cc >> 6) & 63), 0x80 | (cc & 63));
+      }
+    }
+    return new Uint8Array(bytes);
+  }
+
+  function utf8Decode(bytes) {
+    if (typeof TextDecoder !== 'undefined') {
+      try {
+        return new TextDecoder('utf-8', { fatal: false }).decode(bytes);
+      } catch (e) { /* 落到下面的兜底实现 */ }
+    }
+    var s = '', i = 0;
+    while (i < bytes.length) {
+      var c = bytes[i++];
+      if (c < 0x80) s += String.fromCharCode(c);
+      else if (c < 0xE0) s += String.fromCharCode(((c & 31) << 6) | (bytes[i++] & 63));
+      else if (c < 0xF0) {
+        s += String.fromCharCode(((c & 15) << 12) | ((bytes[i++] & 63) << 6) | (bytes[i++] & 63));
+      } else {
+        var cc = ((c & 7) << 18) | ((bytes[i++] & 63) << 12)
+          | ((bytes[i++] & 63) << 6) | (bytes[i++] & 63);
+        cc -= 0x10000;
+        s += String.fromCharCode(0xD800 + (cc >> 10), 0xDC00 + (cc & 0x3FF));
+      }
+    }
+    return s;
+  }
+
+  /* =========================================================================
+   * 4. 鲁棒引擎：DWT-DCT-SVD + QIM
+   * ======================================================================= */
+
+  function robustBlocks(W, H) {
+    return { bw: (W >> 1) >> 2, bh: (H >> 1) >> 2 };
+  }
+
+  function robustCapacityBits(W, H) {
+    var b = robustBlocks(W, H);
+    return b.bw * b.bh * 3;
+  }
+
+  function robustCapacityBytes(W, H) {
+    return Math.floor(robustCapacityBits(W, H) / 8) - HEADER_BYTES;
+  }
+
+  var _scratch = null;
+  function scratch() {
+    if (!_scratch) {
+      _scratch = {
+        block: new Float64Array(16),
+        dct: new Float64Array(16),
+        tmp: new Float64Array(16),
+        rec: new Float64Array(16),
+        U: new Float64Array(16),
+        S: new Float64Array(4),
+        V: new Float64Array(16),
+      };
+    }
+    return _scratch;
+  }
+
+  /**
+   * 读/写一个 4x4 块的最大奇异值。
+   * @param LL      LL 子带缓冲
+   * @param stride  LL 的**实际行宽**（= W/2），不是块的列数，别混用
+   * @param bw      每行有多少个 4x4 块
+   * @param blockIdx 块序号
+   * @param writeBit >=0 表示写入该 bit；传 -1 表示读取
+   */
+  function processBlock(LL, stride, bw, blockIdx, sc, writeBit, delta) {
+    var by = (blockIdx / bw) | 0, bx = blockIdx % bw;
+    var y0 = by << 2, x0 = bx << 2;
+    var i, bit = 0;
+
+    for (i = 0; i < 16; i++) {
+      sc.block[i] = LL[(y0 + (i >> 2)) * stride + (x0 + (i & 3))];
+    }
+    dct4(sc.block, sc.dct, sc.tmp);
+    svd4(sc.dct, sc.U, sc.S, sc.V);
+
+    var q = Math.floor(sc.S[0] / delta);
+    if (writeBit >= 0) {
+      var q2 = 2 * Math.floor(q / 2) + (writeBit & 1);
+      sc.S[0] = (q2 + 0.5) * delta;
+      svd4Reconstruct(sc.U, sc.S, sc.V, sc.rec);
+      idct4(sc.rec, sc.dct, sc.tmp);
+      for (i = 0; i < 16; i++) {
+        LL[(y0 + (i >> 2)) * stride + (x0 + (i & 3))] = sc.dct[i];
+      }
+      return 0;
+    }
+    // 读取：s0' 落在格点中心 (q' + 0.5)，因此 floor(s0'/delta) 恰为 q'。
+    // 注意这里必须用 floor —— 用 Math.round 会撞上「.5 向上取整」而错位一格。
+    // 容错半径是 ±delta/2。
+    q = Math.floor(sc.S[0] / delta);
+    bit = ((q % 2) + 2) % 2;
+    return bit;
+  }
+
+  /**
+   * 鲁棒嵌入。
+   * @param planes 三个 Float64Array（BGR 平面）
+   * @returns 实际写入的 bit 数
+   */
+  function embedRobust(planes, W, H, payload, password, delta, cache, contentType) {
+    delta = delta || DEFAULT_DELTA;
+    if (contentType === undefined) contentType = TYPE_TEXT;
+    var b = robustBlocks(W, H);
+    var cap = b.bw * b.bh * 3;
+    var bytes = packContainer(METHOD_ROBUST, contentType, payload);
+    var bits = bytesToBits(bytes);
+    if (bits.length > cap) {
+      throw new Error('数据过大：需要 ' + bits.length + ' bit（' + bytes.length
+        + ' 字节），当前图片的鲁棒容量只有 ' + cap + ' bit（'
+        + robustCapacityBytes(W, H) + ' 字节）');
+    }
+
+    var hw = W >> 1, hh = H >> 1, c, i;
+    var subs = [];
+    for (c = 0; c < 3; c++) {
+      var sub = {
+        LL: new Float64Array(hw * hh),
+        LH: new Float64Array(hw * hh),
+        HL: new Float64Array(hw * hh),
+        HH: new Float64Array(hw * hh),
+      };
+      haarDwt2(planes[c], W, H, sub);
+      subs.push(sub);
+    }
+
+    var order = makeOrder(cap, password, cache);
+    var sc = scratch();
+    var perChannel = b.bw * b.bh;
+
+    for (i = 0; i < bits.length; i++) {
+      var p = order[i];
+      c = (p / perChannel) | 0;
+      if (c > 2) continue;
+      processBlock(subs[c].LL, hw, b.bw, p % perChannel, sc, bits[i], delta);
+    }
+
+    for (c = 0; c < 3; c++) haarIdwt2(planes[c], W, H, subs[c]);
+    return bits.length;
+  }
+
+  /**
+   * 鲁棒提取。返回 payload 的字节数组；若头部校验不通过则返回 null。
+   */
+  function extractRobust(planes, W, H, password, delta, cache) {
+    delta = delta || DEFAULT_DELTA;
+    var b = robustBlocks(W, H);
+    var cap = b.bw * b.bh * 3;
+    if (cap < HEADER_BYTES * 8) return null;
+
+    var hw = W >> 1, hh = H >> 1, c, i;
+    var subs = [];
+    for (c = 0; c < 3; c++) {
+      var sub = {
+        LL: new Float64Array(hw * hh),
+        LH: new Float64Array(hw * hh),
+        HL: new Float64Array(hw * hh),
+        HH: new Float64Array(hw * hh),
+      };
+      haarDwt2(planes[c], W, H, sub);
+      subs.push(sub);
+    }
+
+    var order = makeOrder(cap, password, cache);
+    var sc = scratch();
+    var perChannel = b.bw * b.bh;
+    var bits = new Uint8Array(cap);
+
+    for (i = 0; i < cap; i++) {
+      var p = order[i];
+      c = (p / perChannel) | 0;
+      if (c > 2) { bits[i] = 0; continue; }
+      bits[i] = processBlock(subs[c].LL, hw, b.bw, p % perChannel, sc, -1, delta);
+    }
+
+    var maxBytes = Math.floor(cap / 8);
+    var bytes = bitsToBytes(bits, maxBytes);
+    var hdr = readHeader(bytes);
+    if (!hdr || hdr.method !== METHOD_ROBUST) return null;
+    if (hdr.length > maxBytes - HEADER_BYTES) return null;
+
+    var out = new Uint8Array(hdr.length);
+    out.set(bytes.subarray(HEADER_BYTES, HEADER_BYTES + hdr.length));
+    return { method: METHOD_ROBUST, contentType: hdr.contentType, data: out };
+  }
+
+  /* =========================================================================
+   * 5. LSB 引擎
+   * ======================================================================= */
+
+  function lsbCapacityBits(W, H) {
+    return W * H * 3;
+  }
+
+  function lsbCapacityBytes(W, H) {
+    return Math.floor(lsbCapacityBits(W, H) / 8) - HEADER_BYTES;
+  }
+
+  function embedLsb(planes, W, H, payload, password, cache, contentType) {
+    if (contentType === undefined) contentType = TYPE_TEXT;
+    var total = lsbCapacityBits(W, H);
+    var bytes = packContainer(METHOD_LSB, contentType, payload);
+    var bits = bytesToBits(bytes);
+    if (bits.length > total) {
+      throw new Error('数据过大：需要 ' + bytes.length + ' 字节，当前图片的大容量通道只能容纳 '
+        + lsbCapacityBytes(W, H) + ' 字节');
+    }
+    var order = makeOrder(total, password, cache);
+    for (var i = 0; i < bits.length; i++) {
+      var p = order[i];
+      var c = p % 3;
+      var px = (p / 3) | 0;
+      planes[c][px] = (Math.floor(planes[c][px]) & ~1) | bits[i];
+    }
+    return bits.length;
+  }
+
+  function extractLsb(planes, W, H, password, cache) {
+    var total = lsbCapacityBits(W, H);
+    var hb = HEADER_BYTES * 8;
+    if (total < hb) return null;
+    var order = makeOrder(total, password, cache);
+    var i, p;
+
+    var headBits = new Uint8Array(hb);
+    for (i = 0; i < hb; i++) {
+      p = order[i];
+      headBits[i] = Math.floor(planes[p % 3][(p / 3) | 0]) & 1;
+    }
+    var hdr = readHeader(bitsToBytes(headBits, HEADER_BYTES));
+    if (!hdr || hdr.method !== METHOD_LSB) return null;
+
+    var need = HEADER_BYTES + hdr.length;
+    if (need * 8 > total) return null;
+
+    var allBits = new Uint8Array(need * 8);
+    for (i = 0; i < need * 8; i++) {
+      p = order[i];
+      allBits[i] = Math.floor(planes[p % 3][(p / 3) | 0]) & 1;
+    }
+    var bytes = bitsToBytes(allBits, need);
+    var out = new Uint8Array(hdr.length);
+    out.set(bytes.subarray(HEADER_BYTES, need));
+    return { method: METHOD_LSB, contentType: hdr.contentType, data: out };
+  }
+
+  /* =========================================================================
+   * 6. 自动提取
+   * ======================================================================= */
+
+  /**
+   * 先试 LSB（快且不会误判），再试鲁棒模式。
+   * @returns {method, contentType, data} 或 null
+   */
+  function autoExtract(planes, W, H, password, delta, cache) {
+    var r = extractLsb(planes, W, H, password, cache);
+    if (r) return r;
+    return extractRobust(planes, W, H, password, delta, cache);
+  }
+
+  /* =========================================================================
+   * 对外接口
+   * ======================================================================= */
+
+  return {
+    HEADER_BYTES: HEADER_BYTES,
+    METHOD_ROBUST: METHOD_ROBUST,
+    METHOD_LSB: METHOD_LSB,
+    TYPE_TEXT: TYPE_TEXT,
+    TYPE_FILE: TYPE_FILE,
+    TYPE_IMAGE: TYPE_IMAGE,
+    DEFAULT_DELTA: DEFAULT_DELTA,
+
+    robustCapacityBits: robustCapacityBits,
+    robustCapacityBytes: robustCapacityBytes,
+    lsbCapacityBits: lsbCapacityBits,
+    lsbCapacityBytes: lsbCapacityBytes,
+
+    embedRobust: embedRobust,
+    extractRobust: extractRobust,
+    embedLsb: embedLsb,
+    extractLsb: extractLsb,
+    autoExtract: autoExtract,
+
+    utf8Encode: utf8Encode,
+    utf8Decode: utf8Decode,
+    makeOrder: makeOrder,
+
+    // 供测试使用
+    _dct4: dct4,
+    _idct4: idct4,
+    _svd4: svd4,
+    _svd4Reconstruct: svd4Reconstruct,
+    _haarDwt2: haarDwt2,
+    _haarIdwt2: haarIdwt2,
+    _packContainer: packContainer,
+    _readHeader: readHeader,
+  };
+});
+
+</script>
+<script>
+/*!
+ * 盲水印工坊 — 界面逻辑
+ */
+(function () {
+  'use strict';
+
+  var BWM = window.BWM;
+  var STG = window.BWMStego;
+  var $ = function (s, r) { return (r || document).querySelector(s); };
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
+
+  /* ==================== 通用 UI ==================== */
+  var toastEl = $('#toast'), toastTimer = null;
+  function toast(msg, isErr) {
+    toastEl.textContent = msg;
+    toastEl.classList.toggle('err', !!isErr);
+    toastEl.classList.add('on');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { toastEl.classList.remove('on'); }, 3200);
+  }
+
+  function setBusy(btn, busy, label) {
+    if (busy) {
+      if (!btn.dataset.orig) btn.dataset.orig = btn.textContent;
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span>' + (label || '处理中…');
+    } else {
+      btn.disabled = false;
+      if (btn.dataset.orig) btn.textContent = btn.dataset.orig;
+    }
+  }
+
+  function makeProgress(id) {
+    var el = $(id);
+    var fill = el.querySelector('.fill'), txt = el.querySelector('.txt');
+    var t0 = 0;
+    el.classList.add('on');
+    fill.style.width = '0%';
+    t0 = Date.now();
+    txt.textContent = '处理中…';
+    return {
+      tick: function (p) {
+        p = Math.max(0, Math.min(1, p || 0));
+        fill.style.width = (p * 100).toFixed(1) + '%';
+        txt.textContent = '处理中 ' + Math.round(p * 100) + '%　已用 '
+          + ((Date.now() - t0) / 1000).toFixed(1) + ' s';
+        return new Promise(function (r) { setTimeout(r, 0); });
+      },
+      done: function (msg) {
+        fill.style.width = '100%';
+        txt.textContent = (msg || '完成') + '　用时 ' + ((Date.now() - t0) / 1000).toFixed(2) + ' s';
+        setTimeout(function () { el.classList.remove('on'); }, 1400);
+      },
+      fail: function () { el.classList.remove('on'); }
+    };
+  }
+
+  function isPow2(n) { return n > 0 && (n & (n - 1)) === 0; }
+  function sizeNote(w, h) {
+    var px = w * h;
+    if (px > 9e6) return '超大图，可能需 10 秒以上';
+    if (px > 2.5e6) return '较大，约需数秒';
+    if (!isPow2(w) || !isPow2(h)) return '尺寸非 2 的幂，FFT 会偏慢';
+    return '';
+  }
+
+  /* ==================== 图片槽位 ==================== */
+  var slots = {};
+
+  /** 哪些槽位装的是「会参与 FFT 的载体图」——只有它们才需要尺寸提示 */
+  var FFT_SLOTS = ['enc-img', 'dec-img', 'dec-wm', 'det-target', 'det-origin'];
+
+  function initSlot(name) {
+    var el = document.querySelector('[data-slot="' + name + '"]');
+    var s = { name: name, el: el, data: null, ph: el.innerHTML, fft: FFT_SLOTS.indexOf(name) >= 0 };
+    slots[name] = s;
+
+    el.addEventListener('click', function (ev) {
+      if (ev.target.closest('.clear')) return;
+      pickFile(s);
+    });
+    el.addEventListener('dragover', function (e) { e.preventDefault(); el.classList.add('drag'); });
+    el.addEventListener('dragleave', function () { el.classList.remove('drag'); });
+    el.addEventListener('drop', function (e) {
+      e.preventDefault();
+      el.classList.remove('drag');
+      var f = e.dataTransfer.files && e.dataTransfer.files[0];
+      if (f) loadFile(s, f);
+    });
+    return s;
+  }
+
+  function pickFile(s) {
+    var inp = document.createElement('input');
+    inp.type = 'file';
+    inp.accept = 'image/*';
+    inp.onchange = function () { if (inp.files[0]) loadFile(s, inp.files[0]); };
+    inp.click();
+  }
+
+  function loadFile(s, file) {
+    if (!/^image\//.test(file.type)) { toast('请选择图片文件', true); return; }
+    var url = URL.createObjectURL(file);
+    var img = new Image();
+    img.onload = function () {
+      URL.revokeObjectURL(url);
+      setSlotSource(s, img, file.name);
+    };
+    img.onerror = function () {
+      URL.revokeObjectURL(url);
+      toast('图片解码失败', true);
+    };
+    img.src = url;
+  }
+
+  /** source 可以是 HTMLImageElement / HTMLCanvasElement / ImageBitmap */
+  function setSlotSource(s, source, name) {
+    var w = source.width, h = source.height;
+    if (!w || !h) { toast('图片尺寸无效', true); return; }
+    if (w * h > 4e7) { toast('图片过大（超过 4000 万像素），请先缩小', true); return; }
+    var cv = document.createElement('canvas');
+    cv.width = w; cv.height = h;
+    var ctx = cv.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(source, 0, 0);
+    s.data = {
+      w: w, h: h, name: name || '',
+      imageData: ctx.getImageData(0, 0, w, h),
+      canvas: cv
+    };
+    renderSlot(s);
+    updateButtons();
+  }
+
+  function renderSlot(s) {
+    var el = s.el, d = s.data;
+    if (!d) { el.classList.remove('filled'); el.innerHTML = s.ph; return; }
+    el.classList.add('filled');
+
+    var sc = Math.min(1, 340 / Math.max(d.w, d.h));
+    var t = document.createElement('canvas');
+    t.width = Math.max(1, Math.round(d.w * sc));
+    t.height = Math.max(1, Math.round(d.h * sc));
+    t.getContext('2d').drawImage(d.canvas, 0, 0, t.width, t.height);
+
+    var note = s.fft ? sizeNote(d.w, d.h) : '';
+    el.innerHTML =
+      '<img class="thumb" alt="">' +
+      '<span class="tag">' + (s.el.dataset.label || '') + '</span>' +
+      '<button class="clear" title="移除">×</button>' +
+      '<div class="meta"><span>' + d.w + ' × ' + d.h + ' px</span>' +
+      (note ? '<span class="warn">' + note + '</span>' : '<span></span>') +
+      '</div>';
+    el.querySelector('.thumb').src = t.toDataURL('image/png');
+    el.querySelector('.clear').addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      s.data = null;
+      renderSlot(s);
+      updateButtons();
+    });
+  }
+
+  function slotImageData(s) {
+    // 返回绘制到 canvas 的原始尺寸 ImageData，供切片使用
+    return s.data;
+  }
+
+  function toPlanes(s, backdrop) {
+    var bd = backdrop === 'white' ? { r: 255, g: 255, b: 255 }
+      : backdrop === 'black' ? { r: 0, g: 0, b: 0 } : null;
+    return BWM.rgbaToPlanes(s.imageData.data, s.w, s.h, bd);
+  }
+
+  /* ==================== 输出 ==================== */
+  function planesToCanvas(planes, w, h) {
+    var cv = document.createElement('canvas');
+    cv.width = w; cv.height = h;
+    var rgba = BWM.planesToRgba({ w: w, h: h, planes: planes });
+    cv.getContext('2d').putImageData(new ImageData(rgba, w, h), 0, 0);
+    return cv;
+  }
+
+  /** 按最长边缩放出一个用于显示的 canvas */
+  function renderScale(canvas, maxSide) {
+    var sc = Math.min(1, (maxSide || 900) / Math.max(canvas.width, canvas.height));
+    if (sc >= 1) return canvas;
+    var out = document.createElement('canvas');
+    out.width = Math.max(1, Math.round(canvas.width * sc));
+    out.height = Math.max(1, Math.round(canvas.height * sc));
+    var c = out.getContext('2d');
+    c.imageSmoothingEnabled = true;
+    c.imageSmoothingQuality = 'high';
+    c.drawImage(canvas, 0, 0, out.width, out.height);
+    return out;
+  }
+
+  function showResult(imgEl, canvas, maxSide) {
+    imgEl.src = renderScale(canvas, maxSide).toDataURL('image/png');
+  }
+
+  /**
+   * 对比度增强：以中位数当噪声底、99.5 分位当白点做线性拉伸。
+   * 分离出的水印往往压在一层灰噪声上，拉伸后水印轮廓明显得多。
+   */
+  function enhanceCanvas(src) {
+    var w = src.width, h = src.height, n = w * h;
+    var ctx = src.getContext('2d', { willReadFrequently: true });
+    var d = ctx.getImageData(0, 0, w, h).data;
+    var hist = new Uint32Array(256), i, v;
+    for (i = 0; i < n; i++) {
+      v = (d[i * 4] + d[i * 4 + 1] + d[i * 4 + 2]) / 3 | 0;
+      hist[v]++;
+    }
+    var cum = 0, lo = 0, hi = 255;
+    for (i = 0; i < 256; i++) { cum += hist[i]; if (cum >= n * 0.5) { lo = i; break; } }
+    cum = 0;
+    for (i = 0; i < 256; i++) { cum += hist[i]; if (cum >= n * 0.995) { hi = i; break; } }
+    if (hi <= lo) hi = lo + 1;
+
+    var out = document.createElement('canvas');
+    out.width = w; out.height = h;
+    var octx = out.getContext('2d');
+    var oid = octx.createImageData(w, h);
+    var scale = 255 / (hi - lo);
+    for (i = 0; i < n; i++) {
+      for (var c = 0; c < 3; c++) {
+        v = (d[i * 4 + c] - lo) * scale;
+        oid.data[i * 4 + c] = v < 0 ? 0 : v > 255 ? 255 : v;
+      }
+      oid.data[i * 4 + 3] = 255;
+    }
+    octx.putImageData(oid, 0, 0);
+    return out;
+  }
+
+  function downloadCanvas(canvas, filename) {
+    canvas.toBlob(function (blob) {
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(function () {
+        URL.revokeObjectURL(a.href);
+        a.remove();
+      }, 1500);
+    }, 'image/png');
+  }
+
+  function diffStats(a, b, n) {
+    var sum2 = 0, mx = 0, c, i, d;
+    for (c = 0; c < 3; c++) {
+      var A = a[c], B = b[c];
+      for (i = 0; i < n; i++) {
+        d = A[i] - B[i];
+        sum2 += d * d;
+        if (d < 0) d = -d;
+        if (d > mx) mx = d;
+      }
+    }
+    var mse = sum2 / (n * 3);
+    return { max: mx, mse: mse, psnr: mse > 0 ? 10 * Math.log10(65025 / mse) : Infinity };
+  }
+
+  function statHTML(items) {
+    return items.map(function (it) {
+      var cls = it.tone ? ' ' + it.tone : '';
+      return '<dl class="stat' + cls + '"><dt>' + it.k + '</dt><dd>'
+        + it.v + (it.u ? '<small>' + it.u + '</small>' : '') + '</dd></dl>';
+    }).join('');
+  }
+
+  /** 判据比值可能极端大（虚部被压到数值零），这里做可读化处理 */
+  function fmtRatio(r) {
+    if (!isFinite(r)) return '∞';
+    if (r >= 1000) return '> 1000';
+    return r.toFixed(2);
+  }
+
+  /* ==================== 参数 ==================== */
+  var alphaEl = $('#opt-alpha'), alphaVal = $('#opt-alpha-val');
+  alphaEl.addEventListener('input', function () {
+    alphaVal.textContent = Number(alphaEl.value).toFixed(1);
+  });
+  $('#opt-seed').addEventListener('change', function () {
+    var v = parseInt(this.value, 10);
+    if (!isFinite(v) || v < 0) this.value = 20160930;
+  });
+
+  var MODE_NOTES = {
+    numpy: '<b>兼容原作</b>：复刻 <code>np.fft.fft2</code> 对 <code>(H,W,3)</code> 的默认变换轴（宽度轴 + 通道轴），'
+      + '结果可与 Python 版 <code>bwmforpy3.py</code> 互相解出。检测判据灵敏，但图像改动相对大一些。',
+    channel: '<b>高质量</b>：每个颜色通道独立做空间二维 FFT，图像改动极小（PSNR 通常 55 dB 以上），肉眼完全无感。'
+      + '<b>代价是</b>：只有本工具能解出，Python 原作脚本解不出来。'
+  };
+  function refreshModeNote() {
+    $('#mode-note').innerHTML = MODE_NOTES[$('#opt-transform').value] || '';
+  }
+  $('#opt-transform').addEventListener('change', refreshModeNote);
+  refreshModeNote();
+
+  function getOpts() {
+    var seed = parseInt($('#opt-seed').value, 10);
+    if (!isFinite(seed) || seed < 0) seed = 20160930;
+    return {
+      seed: seed,
+      alpha: parseFloat(alphaEl.value) || 3,
+      transform: $('#opt-transform').value,
+      backdrop: $('#opt-backdrop').value,
+      oldSeed: false
+    };
+  }
+
+  /* ==================== Tab ==================== */
+  var activeTab = 'encode';
+  $$('.tab').forEach(function (t) {
+    t.addEventListener('click', function () {
+      activeTab = t.dataset.tab;
+      $$('.tab').forEach(function (x) { x.classList.toggle('active', x === t); });
+      $$('.panel').forEach(function (p) {
+        p.classList.toggle('active', p.id === 'panel-' + activeTab);
+      });
+    });
+  });
+
+  /* ==================== 粘贴 ==================== */
+  document.addEventListener('paste', function (e) {
+    var items = e.clipboardData && e.clipboardData.items;
+    if (!items) return;
+    for (var i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf('image') === 0) {
+        var f = items[i].getAsFile();
+        var order = {
+          encode: ['enc-img', 'enc-wm'],
+          decode: ['dec-img', 'dec-wm'],
+          detect: ['det-target', 'det-origin', 'det-cand']
+        }[activeTab] || [];
+        for (var k = 0; k < order.length; k++) {
+          if (!slots[order[k]].data) { loadFile(slots[order[k]], f); e.preventDefault(); return; }
+        }
+        toast('当前面板的槽位已填满');
+        return;
+      }
+    }
+  });
+
+  /* ==================== 按钮状态 ==================== */
+  function updateButtons() {
+    $('#btn-run-encode').disabled = !(slots['enc-img'].data && slots['enc-wm'].data);
+    $('#btn-run-decode').disabled = !(slots['dec-img'].data && slots['dec-wm'].data);
+    $('#btn-run-detect').disabled = !slots['det-target'].data;
+    $('#btn-run-stego').disabled = !slots['stg-img'].data;
+    $('#btn-run-extract').disabled = !slots['stgx-img'].data;
+    refreshStegoCapacity();
+  }
+
+  /* ==================== 示例图 ==================== */
+  function samplePhoto(w, h) {
+    var cv = document.createElement('canvas');
+    cv.width = w; cv.height = h;
+    var g = cv.getContext('2d');
+    var sky = g.createLinearGradient(0, 0, 0, h);
+    sky.addColorStop(0, '#2f6fb5');
+    sky.addColorStop(0.45, '#7fb0dd');
+    sky.addColorStop(0.62, '#e8c9a0');
+    sky.addColorStop(1, '#4d5a44');
+    g.fillStyle = sky;
+    g.fillRect(0, 0, w, h);
+
+    g.fillStyle = 'rgba(255,242,210,.92)';
+    g.beginPath(); g.arc(w * 0.76, h * 0.26, h * 0.075, 0, Math.PI * 2); g.fill();
+
+    function ridge(base, amp, color) {
+      g.fillStyle = color;
+      g.beginPath();
+      g.moveTo(0, h);
+      for (var x = 0; x <= w; x += 4) {
+        var y = base + amp * Math.sin(x / 96) + amp * 0.5 * Math.sin(x / 33 + 1.7)
+          + amp * 0.25 * Math.sin(x / 17 + 0.6);
+        g.lineTo(x, y);
+      }
+      g.lineTo(w, h); g.closePath(); g.fill();
+    }
+    ridge(h * 0.60, h * 0.055, '#4a5f52');
+    ridge(h * 0.70, h * 0.04, '#3b4c40');
+    ridge(h * 0.82, h * 0.03, '#2c3a31');
+
+    // 细颗粒，模拟真实照片的高频细节
+    var id = g.getImageData(0, 0, w, h), d = id.data;
+    for (var i = 0; i < d.length; i += 4) {
+      var n = (Math.random() - 0.5) * 14;
+      d[i] = Math.max(0, Math.min(255, d[i] + n));
+      d[i + 1] = Math.max(0, Math.min(255, d[i + 1] + n));
+      d[i + 2] = Math.max(0, Math.min(255, d[i + 2] + n));
+    }
+    g.putImageData(id, 0, 0);
+    return cv;
+  }
+
+  function sampleWatermark(w, h) {
+    var cv = document.createElement('canvas');
+    cv.width = w; cv.height = h;
+    var g = cv.getContext('2d');
+    g.fillStyle = '#000';
+    g.fillRect(0, 0, w, h);
+    g.fillStyle = '#fff';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.font = 'bold ' + Math.round(h * 0.62) + 'px "Segoe UI", Arial, sans-serif';
+    g.fillText('BWM', w / 2, h / 2 + h * 0.03);
+    g.lineWidth = Math.max(2, Math.round(h * 0.045));
+    g.strokeStyle = '#fff';
+    g.strokeRect(g.lineWidth, g.lineWidth, w - g.lineWidth * 2, h - g.lineWidth * 2);
+    return cv;
+  }
+
+  $('#btn-sample').addEventListener('click', function () {
+    setSlotSource(slots['enc-img'], samplePhoto(640, 480), 'sample-photo.png');
+    setSlotSource(slots['enc-wm'], sampleWatermark(180, 84), 'sample-mark.png');
+    toast('已载入示例图片，可直接点「开始合成」');
+  });
+
+  /* ==================== 合成 ==================== */
+  $('#btn-run-encode').addEventListener('click', async function () {
+    var o = getOpts();
+    var is = slots['enc-img'].data, ws = slots['enc-wm'].data;
+    if (!is || !ws) return;
+    var btn = this, ui = makeProgress('#prog-encode');
+    setBusy(btn, true, '合成中…');
+    try {
+      var img = toPlanes(is, o.backdrop);
+      var wm = toPlanes(ws, o.backdrop);
+      var Hh = Math.floor(img.h / 2);
+      if (wm.h >= Hh || wm.w >= img.w) {
+        throw new Error('水印尺寸过大：高需 < ' + Hh + '，宽需 < ' + img.w
+          + '（当前水印 ' + wm.w + '×' + wm.h + '）');
+      }
+      var r = await BWM.encode(img, wm, o, ui.tick);
+
+      var n = img.w * img.h, q = r.float.planes.map(function (p) {
+        var a = new Float64Array(p.length);
+        for (var i = 0; i < p.length; i++) a[i] = BWM.clampRound(p[i]);
+        return a;
+      });
+
+      var cv = planesToCanvas(q, img.w, img.h);
+      var st = diffStats(q, img.planes, n);
+      showResult($('#img-encode-out'), cv);
+      $('#stat-encode').innerHTML = statHTML([
+        { k: '输出尺寸', v: img.w + '×' + img.h },
+        { k: 'PSNR', v: st.psnr.toFixed(2), u: 'dB', tone: st.psnr > 45 ? 'good' : st.psnr > 38 ? '' : 'warn' },
+        { k: '最大像素偏差', v: st.max.toFixed(0) },
+        { k: 'RMS 误差', v: Math.sqrt(st.mse).toFixed(2) }
+      ]);
+      var warn = $('#encode-warn');
+      if (st.psnr <= 38) {
+        warn.hidden = false;
+        warn.innerHTML = '<b>画质提示</b>：当前强度下 PSNR 为 ' + st.psnr.toFixed(2)
+          + ' dB，肉眼可能有轻微察觉。可把 <code>alpha</code> 调小、或改用「高质量」模式。';
+      } else { warn.hidden = true; }
+
+      $('#res-encode').classList.add('on');
+      $('#btn-dl-encode').onclick = function () {
+        downloadCanvas(cv, 'encoded-' + Date.now() + '.png');
+      };
+      ui.done();
+    } catch (e) {
+      ui.fail();
+      toast(e.message || String(e), true);
+    } finally {
+      setBusy(btn, false);
+    }
+  });
+
+  /* ==================== 分离 ==================== */
+  $('#btn-run-decode').addEventListener('click', async function () {
+    var o = getOpts();
+    var is = slots['dec-img'].data, ws = slots['dec-wm'].data;
+    if (!is || !ws) return;
+    if (is.w !== ws.w || is.h !== ws.h) {
+      toast('两张图尺寸必须一致（当前 ' + is.w + '×' + is.h + ' 与 ' + ws.w + '×' + ws.h + '）', true);
+      return;
+    }
+    var btn = this, ui = makeProgress('#prog-decode');
+    setBusy(btn, true, '分离中…');
+    try {
+      var img = toPlanes(is, o.backdrop);
+      var imgWm = toPlanes(ws, o.backdrop);
+      var r = await BWM.decode(img, imgWm, Object.assign({}, o, { quantize: 'round' }), ui.tick);
+
+      var cv = planesToCanvas(r.wm.planes, img.w, img.h);
+      var n = img.w * img.h;
+      // 水印实际落点：左上角 1/4 区域内的对比度，用来判断分离是否有效
+      var half = Math.floor(img.h / 2), hw = Math.floor(img.w / 2);
+      var lo = -1, hi = -1, c, i, j;
+      for (c = 0; c < 3; c++) {
+        for (i = 0; i < half; i++) {
+          for (j = 0; j < hw; j++) {
+            var v = r.wm.planes[c][i * img.w + j];
+            if (lo < 0 || v < lo) lo = v;
+            if (v > hi) hi = v;
+          }
+        }
+      }
+      showResult($('#img-decode-out'), cv);
+      $('#stat-decode').innerHTML = statHTML([
+        { k: '输出尺寸', v: img.w + '×' + img.h },
+        { k: '内容区动态范围', v: (hi - lo).toFixed(0), u: '/255', tone: (hi - lo) > 60 ? 'good' : 'warn' },
+        { k: '内容区最亮', v: hi.toFixed(0) },
+        { k: '内容区最暗', v: Math.max(0, lo).toFixed(0) }
+      ]);
+      $('#decode-note').innerHTML = '若左上角能看出水印轮廓（可能带对角双影和条纹噪点），说明分离成功。'
+        + '噪点来自算法本身的固有损失，可用<b>「增强显示」</b>把压在灰噪声上的轮廓拉出来（只影响预览，下载的始终是原始数据）。'
+        + '想核对具体内容，可到<b>「检测」</b>面板把原图、含水印图和候选水印一起放进去，会给出互相关分数。';
+
+      // 原始 / 增强 两种视图切换
+      var viewCanvas = renderScale(cv, 900);
+      var enhCanvas = enhanceCanvas(viewCanvas);
+      var showRaw = true;
+      var paint = function () {
+        $('#img-decode-out').src = (showRaw ? viewCanvas : enhCanvas).toDataURL('image/png');
+        $('#btn-enh-decode').textContent = showRaw ? '增强显示' : '查看原始';
+      };
+      paint();
+      $('#btn-enh-decode').onclick = function () { showRaw = !showRaw; paint(); };
+
+      $('#res-decode').classList.add('on');
+      $('#btn-dl-decode').onclick = function () {
+        downloadCanvas(cv, 'watermark-' + Date.now() + '.png');
+      };
+      ui.done();
+    } catch (e) {
+      ui.fail();
+      toast(e.message || String(e), true);
+    } finally {
+      setBusy(btn, false);
+    }
+  });
+
+  /* ==================== 检测 ==================== */
+  function drawRadial(rs) {
+    var cv = $('#radial-canvas');
+    var ctx = cv.getContext('2d');
+    var W = cv.width, H = cv.height;
+    ctx.clearRect(0, 0, W, H);
+
+    var padL = 62, padR = 18, padT = 18, padB = 34;
+    var iw = W - padL - padR, ih = H - padT - padB;
+    var prof = Array.prototype.slice.call(rs.profile);
+    var logs = prof.map(function (v) { return Math.log10(Math.max(v, 1e-12)); });
+    var lo = Math.min.apply(null, logs), hi = Math.max.apply(null, logs);
+    if (hi - lo < 3) { hi = lo + 3; }
+    var pad = (hi - lo) * 0.08;
+    lo -= pad; hi += pad;
+
+    function X(i) { return padL + iw * (i / (prof.length - 1)); }
+    function Y(lg) { return padT + ih * (1 - (lg - lo) / (hi - lo)); }
+
+    ctx.strokeStyle = '#e2e6ec';
+    ctx.fillStyle = '#8b94a1';
+    ctx.font = '11px system-ui, sans-serif';
+    ctx.lineWidth = 1;
+    for (var t = 0; t <= 4; t++) {
+      var lg = lo + (hi - lo) * t / 4;
+      var y = Y(lg);
+      ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(padL + iw, y); ctx.stroke();
+      ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+      ctx.fillText(Math.pow(10, lg).toExponential(1), padL - 8, y);
+    }
+    for (var x = 0; x <= 5; x++) {
+      var xx = padL + iw * x / 5;
+      ctx.beginPath(); ctx.moveTo(xx, padT); ctx.lineTo(xx, padT + ih); ctx.stroke();
+      ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+      ctx.fillText((x / 5).toFixed(1), xx, padT + ih + 8);
+    }
+    ctx.textAlign = 'center'; ctx.fillText('归一化空间频率', padL + iw / 2, H - 12);
+    ctx.save();
+    ctx.translate(14, padT + ih / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.textBaseline = 'middle';
+    ctx.fillText('径向平均功率', 0, 0);
+    ctx.restore();
+
+    ctx.strokeStyle = '#1a5fd0';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (var i = 0; i < prof.length; i++) {
+      var px = X(i), py = Y(logs[i]);
+      if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    }
+    ctx.stroke();
+
+    // 低频谱外推基线
+    var nf = Math.max(4, Math.floor(prof.length / 3));
+    var sx = 0, sy = 0, sxx = 0, sxy = 0;
+    for (i = 0; i < nf; i++) {
+      var lx = Math.log10((i + 1) / prof.length);
+      sx += lx; sy += logs[i]; sxx += lx * lx; sxy += lx * logs[i];
+    }
+    var den = nf * sxx - sx * sx;
+    var slope = den !== 0 ? (nf * sxy - sx * sy) / den : 0;
+    var inter = (sy - slope * sx) / nf;
+    ctx.strokeStyle = '#b45309';
+    ctx.setLineDash([5, 4]);
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    for (i = 0; i < prof.length; i++) {
+      var gx = Math.log10((i + 1) / prof.length);
+      var gl = inter + slope * gx;
+      if (i === 0) ctx.moveTo(X(i), Y(gl)); else ctx.lineTo(X(i), Y(gl));
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = '#5a626e';
+    ctx.font = '11.5px system-ui, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText('—— 实测功率谱', padL + 8, padT + 4);
+    ctx.fillStyle = '#b45309';
+    ctx.fillText('---- 低频段拟合（自然图像基线）', padL + 8, padT + 20);
+
+    // 高频段超出基线的倍数
+    var tail = Math.max(1, Math.floor(prof.length * 0.15));
+    var sumA = 0, sumB = 0;
+    for (i = prof.length - tail; i < prof.length; i++) {
+      sumA += logs[i];
+      sumB += inter + slope * Math.log10((i + 1) / prof.length);
+    }
+    return Math.pow(10, (sumA - sumB) / tail);
+  }
+
+  $('#btn-run-detect').addEventListener('click', async function () {
+    var o = getOpts();
+    var ts = slots['det-target'].data;
+    if (!ts) return;
+    var os = slots['det-origin'].data;
+    var cs = slots['det-cand'].data;
+    var btn = this, ui = makeProgress('#prog-detect');
+    setBusy(btn, true, '检测中…');
+    $('#res-detect').classList.remove('on');
+    $('#det-preview-wrap').hidden = true;
+    $('#det-radial-wrap').hidden = true;
+
+    try {
+      var target = toPlanes(ts, o.backdrop);
+
+      if (os) {
+        /* ---- 精确检测 ---- */
+        if (os.w !== ts.w || os.h !== ts.h) {
+          throw new Error('原图与待检图尺寸不一致（' + os.w + '×' + os.h
+            + ' 与 ' + ts.w + '×' + ts.h + '）');
+        }
+        var origin = toPlanes(os, o.backdrop);
+        var det = await BWM.detectPair(origin, target, o, function (p) {
+          return ui.tick(p * 0.5);
+        });
+        var dec = await BWM.decode(origin, target,
+          Object.assign({}, o, { quantize: 'round' }),
+          function (p) { return ui.tick(0.5 + p * 0.5); });
+
+        var ratio = det.ratio;
+        var verdict, cls, icon, title, sub;
+        if (ratio >= 3) {
+          cls = 'yes'; icon = '●'; title = '检测到盲水印';
+          sub = '频谱残差被强制成实值，符合本算法嵌入水印的特征。';
+        } else if (ratio >= 1.8) {
+          cls = 'maybe'; icon = '●'; title = '疑似存在水印';
+          sub = '指标高于阈值但不够显著，可能是 alpha 很小，或图片被重压缩过。';
+        } else {
+          cls = 'no'; icon = '●'; title = '未检测到水印';
+          sub = '残差的实部与虚部能量相当，与"无水印"的噪声特征一致。';
+        }
+        var v = $('#det-verdict');
+        v.className = 'verdict ' + cls;
+        v.querySelector('.ic').textContent = icon;
+        v.querySelector('div').innerHTML = title + '<small>' + sub + '</small>';
+
+        var cv = planesToCanvas(dec.wm.planes, ts.w, ts.h);
+        showResult($('#img-detect-out'), cv);
+        $('#det-preview-wrap').hidden = false;
+        $('#btn-dl-detect').onclick = function () {
+          downloadCanvas(cv, 'watermark-' + Date.now() + '.png');
+        };
+
+        var stats = [
+          { k: '实部/虚部能量比', v: fmtRatio(ratio), tone: ratio >= 3 ? 'good' : ratio >= 1.8 ? 'warn' : 'bad' },
+          { k: '残差实部能量', v: det.eRe.toExponential(2) },
+          { k: '残差虚部能量', v: det.eIm.toExponential(2) },
+          { k: '判据阈值', v: '≥ 3.0', u: '判为有水印' }
+        ];
+
+        if (cs) {
+          if (cs.h > ts.h / 2 || cs.w > ts.w) {
+            toast('候选水印过大，已跳过互相关比对', true);
+          } else {
+            var cand = toPlanes(cs, o.backdrop);
+            var A = [], B = [];
+            for (var c = 0; c < 3; c++) {
+              for (var i = 0; i < cand.h; i++) {
+                for (var j = 0; j < cand.w; j++) {
+                  A.push(dec.wm.planes[c][i * ts.w + j]);
+                  B.push(cand.planes[c][i * cand.w + j]);
+                }
+              }
+            }
+            var ncc = BWM.ncc(A, B);
+            stats.push({
+              k: '候选水印互相关', v: ncc.toFixed(3),
+              tone: ncc > 0.5 ? 'good' : ncc > 0.25 ? 'warn' : 'bad'
+            });
+            if (ncc > 0.5) {
+              v.className = 'verdict yes';
+              v.querySelector('div').innerHTML = '确认是这张水印'
+                + '<small>与候选水印的归一化互相关达 ' + ncc.toFixed(3) + '（> 0.5 视为同一张）。</small>';
+            }
+          }
+        }
+
+        $('#stat-detect').innerHTML = statHTML(stats);
+        $('#det-note').innerHTML = '判据说明：水印只叠加在频域的<b>实部</b>上，所以「含水印图频谱 − 原图频谱」是纯实数的；'
+          + '若图中没有水印，这个差值就只剩量化与压缩噪声，实部与虚部能量相当，比值落在 1 附近。'
+          + '实测：无关图约 <code>1.00</code>，含水印图普遍在 <code>10</code> 以上，无损往返时甚至可达 <code>10³</code> 量级。'
+          + '该比值与 <code>alpha</code> 正相关；图片若经过 JPEG 重压缩、缩放或裁剪，水印会受损，比值将明显下降。';
+      } else {
+        /* ---- 无原图：启发式盲检 ---- */
+        var rs = await BWM.radialSpectrum(target, ui.tick);
+        var excess = drawRadial(rs);
+        $('#det-radial-wrap').hidden = false;
+
+        var v2 = $('#det-verdict');
+        var cls2, title2, sub2;
+        if (excess >= 4) {
+          cls2 = 'maybe'; title2 = '高频存在异常能量';
+          sub2 = '径向功率谱的高频段比自然图像基线高约 ' + excess.toFixed(1) + ' 倍，值得进一步核查。';
+        } else {
+          cls2 = 'no'; title2 = '未见明显异常';
+          sub2 = '高频段与自然图像基线偏差约 ' + excess.toFixed(1) + ' 倍，属正常范围。';
+        }
+        v2.className = 'verdict ' + cls2;
+        v2.querySelector('.ic').textContent = '●';
+        v2.querySelector('div').innerHTML = title2 + '<small>' + sub2 + '</small>';
+        $('#stat-detect').innerHTML = statHTML([
+          { k: '高频超出基线', v: excess.toFixed(2), u: '倍' },
+          { k: '采样环带数', v: rs.bins },
+          { k: '判定依据', v: '启发式' }
+        ]);
+        $('#det-note').innerHTML = '<b>盲检只是参考，不能作为判定依据。</b>'
+          + '这套算法本质是加法式频域水印，<b>必须拿到原图才能可靠判定</b>：'
+          + '没有原图时，"原图的频谱"完全未知，任何统计特征都可能被图像自身的纹理和噪声淹没。'
+          + '如果手上有原图，请放进第二个槽位做精确检测。';
+      }
+      $('#res-detect').classList.add('on');
+      ui.done();
+    } catch (e) {
+      ui.fail();
+      toast(e.message || String(e), true);
+    } finally {
+      setBusy(btn, false);
+    }
+  });
+
+  /* ==================== 隐写 ==================== */
+  var stegoKind = 'text';
+  var stegoFile = null;
+
+  function formatBytes(n) {
+    if (n < 1024) return n + ' B';
+    if (n < 1048576) return (n / 1024).toFixed(1) + ' KB';
+    return (n / 1048576).toFixed(2) + ' MB';
+  }
+
+  // 嵌入 / 提取 切换
+  $$('.segtab[data-seg]').forEach(function (t) {
+    t.addEventListener('click', function () {
+      var seg = t.dataset.seg;
+      $$('.segtab[data-seg]').forEach(function (x) { x.classList.toggle('active', x === t); });
+      $('#seg-embed').hidden = seg !== 'embed';
+      $('#seg-extract').hidden = seg !== 'extract';
+    });
+  });
+
+  // 文字 / 文件 切换
+  $$('.segtab[data-kind]').forEach(function (t) {
+    t.addEventListener('click', function () {
+      stegoKind = t.dataset.kind;
+      $$('.segtab[data-kind]').forEach(function (x) { x.classList.toggle('active', x === t); });
+      $('#kind-text').hidden = stegoKind !== 'text';
+      $('#kind-file').hidden = stegoKind !== 'file';
+      refreshStegoCapacity();
+    });
+  });
+
+  $('#stg-text').addEventListener('input', function () {
+    var n = this.value ? STG.utf8Encode(this.value).length : 0;
+    $('#stg-text-meta').textContent = n ? 'UTF-8 编码后 ' + formatBytes(n) : '';
+    refreshStegoCapacity();
+  });
+
+  $('#stg-pick-file').addEventListener('click', function () {
+    $('#stg-file-input').click();
+  });
+  $('#stg-file-input').addEventListener('change', function () {
+    stegoFile = this.files[0] || null;
+    $('#stg-file-info').textContent = stegoFile
+      ? stegoFile.name + '（' + formatBytes(stegoFile.size) + '）'
+      : '尚未选择文件';
+    refreshStegoCapacity();
+  });
+  $('#stg-method').addEventListener('change', refreshStegoCapacity);
+
+  function currentPayloadSize() {
+    if (stegoKind === 'text') {
+      var t = $('#stg-text').value;
+      return t ? STG.utf8Encode(t).length : 0;
+    }
+    return stegoFile ? stegoFile.size : 0;
+  }
+
+  function refreshStegoCapacity() {
+    var el = $('#stg-capacity');
+    if (!el) return;
+    var s = slots['stg-img'] && slots['stg-img'].data;
+    if (!s) { el.textContent = '先选好载体图，这里会显示可用容量。'; return; }
+    var lsb = $('#stg-method').value === 'lsb';
+    var cap = lsb ? STG.lsbCapacityBytes(s.w, s.h) : STG.robustCapacityBytes(s.w, s.h);
+    var need = currentPayloadSize();
+    var msg = s.w + '×' + s.h + ' 的' + (lsb ? '大容量' : '鲁棒') + '容量约 ' + formatBytes(cap);
+    var over = false;
+    if (need > 0) {
+      msg += '，当前内容 ' + formatBytes(need);
+      if (need <= cap) {
+        msg += ' —— 放得下 ✓';
+      } else {
+        msg += ' —— 超出容量 ✗';
+        over = true;
+      }
+    }
+    el.textContent = msg;
+    el.className = over ? 'note warn' : 'note';
+  }
+
+  // ---------------- 嵌入 ----------------
+  $('#btn-run-stego').addEventListener('click', async function () {
+    var s = slots['stg-img'].data;
+    if (!s) { toast('请先选择载体图', true); return; }
+    var method = $('#stg-method').value;
+    var password = parseInt($('#stg-password').value, 10) || 1;
+    var params = getOpts();
+
+    var payload, contentType;
+    try {
+      if (stegoKind === 'text') {
+        var t = $('#stg-text').value;
+        if (!t) { toast('请输入要隐藏的文字', true); return; }
+        payload = STG.utf8Encode(t);
+        contentType = STG.TYPE_TEXT;
+      } else {
+        if (!stegoFile) { toast('请选择要隐藏的文件', true); return; }
+        payload = new Uint8Array(await stegoFile.arrayBuffer());
+        contentType = STG.TYPE_FILE;
+      }
+    } catch (e) {
+      toast('读取内容失败：' + (e.message || e), true);
+      return;
+    }
+
+    var btn = this, ui = makeProgress('#prog-stego');
+    setBusy(btn, true, '嵌入中…');
+    $('#res-stego').classList.remove('on');
+
+    try {
+      var img = toPlanes(s, params.backdrop);
+      // 让进度条先渲染出来，再做同步计算
+      await new Promise(function (r) { setTimeout(r, 60); });
+
+      var t0 = Date.now();
+      if (method === 'lsb') {
+        STG.embedLsb(img.planes, s.w, s.h, payload, password, null, contentType);
+      } else {
+        STG.embedRobust(img.planes, s.w, s.h, payload, password,
+          STG.DEFAULT_DELTA, null, contentType);
+      }
+      var ms = Date.now() - t0;
+      ui.tick(0.85);
+
+      var q = img.planes.map(function (p) {
+        var a = new Float64Array(p.length);
+        for (var i = 0; i < p.length; i++) a[i] = BWM.clampRound(p[i]);
+        return a;
+      });
+      var cv = planesToCanvas(q, s.w, s.h);
+      ui.tick(1);
+
+      var st = diffStats(q, img.planes, s.w * s.h);
+      $('#stego-verdict').className = 'verdict yes';
+      $('#stego-verdict').innerHTML = '<span class="ic">●</span><div>嵌入完成'
+        + '<small>已用「' + (method === 'lsb' ? '大容量' : '鲁棒') + '模式」藏入 '
+        + formatBytes(payload.length) + '，密码 <b>' + password + '</b>。请牢记密码，'
+        + '提取时必须一致。</small></div>';
+      $('#stat-stego').innerHTML = statHTML([
+        { k: '输出尺寸', v: cv.width + '×' + cv.height },
+        { k: 'PSNR', v: st.psnr.toFixed(2), u: 'dB', tone: st.psnr > 45 ? 'good' : 'warn' },
+        { k: '最大像素偏差', v: st.max.toFixed(0) },
+        { k: '藏入数据', v: formatBytes(payload.length) },
+        { k: '耗时', v: (ms / 1000).toFixed(2), u: 's' }
+      ]);
+      showResult($('#img-stego-out'), cv);
+      $('#btn-dl-stego').onclick = function () {
+        downloadCanvas(cv, 'bwm-stego-' + Date.now() + '.png');
+      };
+      var warn = $('#stego-warn');
+      if (method === 'lsb') {
+        warn.hidden = false;
+        warn.innerHTML = '<b>大容量模式没有任何鲁棒性</b>：图片一旦被 JPEG 压缩、缩放、'
+          + '截图或旋转，数据就彻底没了。请务必保留这份 PNG 原图，'
+          + '传输时也别经过任何会重新编码的渠道。';
+      } else {
+        warn.hidden = false;
+        warn.innerHTML = '<b>鲁棒模式能扛住一定程度的压缩</b>（实测 ±6 级像素抖动仍可提取），'
+          + '但请仍然以 PNG 保存与传递。另外它对<b>缩放和裁剪敏感</b>，'
+          + '尺寸一旦改变就可能提取失败。';
+      }
+      $('#res-stego').classList.add('on');
+      ui.done();
+    } catch (e) {
+      ui.fail();
+      var detail = (e && e.message) ? e.message : String(e);
+      if (e && e.stack) {
+        var lines = String(e.stack).split('\n');
+        detail += ' @@ ' + (lines[1] || '').trim();
+      }
+      toast(detail, true);
+    } finally {
+      setBusy(btn, false);
+    }
+  });
+
+  // ---------------- 提取 ----------------
+  $('#btn-run-extract').addEventListener('click', async function () {
+    var s = slots['stgx-img'].data;
+    if (!s) { toast('请先选择待提取的图', true); return; }
+    var password = parseInt($('#stgx-password').value, 10) || 1;
+    var params = getOpts();
+
+    var btn = this, ui = makeProgress('#prog-extract');
+    setBusy(btn, true, '提取中…');
+    $('#res-extract').classList.remove('on');
+
+    try {
+      var img = toPlanes(s, params.backdrop);
+      await new Promise(function (r) { setTimeout(r, 60); });
+      var res = STG.autoExtract(img.planes, s.w, s.h, password, STG.DEFAULT_DELTA, null);
+      ui.tick(1);
+      showExtractResult(res, s);
+      ui.done();
+    } catch (e) {
+      ui.fail();
+      toast(e.message || String(e), true);
+    } finally {
+      setBusy(btn, false);
+    }
+  });
+
+  function showExtractResult(res, s) {
+    var v = $('#extract-verdict');
+    $('#extract-text-wrap').hidden = true;
+    $('#extract-file-wrap').hidden = true;
+
+    if (!res) {
+      v.className = 'verdict no';
+      v.innerHTML = '<span class="ic">●</span><div>没有提取到数据'
+        + '<small>可能是密码不对，或这张图本来就没有嵌过数据。'
+        + '另外：大容量模式只要经过一次压缩就会失效，'
+        + '尺寸被改过也会导致提取失败。</small></div>';
+      $('#stat-extract').innerHTML = statHTML([
+        { k: '图片尺寸', v: s.w + '×' + s.h },
+        { k: '结果', v: '未找到', tone: 'bad' }
+      ]);
+      $('#res-extract').classList.add('on');
+      return;
+    }
+
+    var methodName = res.method === STG.METHOD_LSB ? '大容量模式' : '鲁棒模式';
+    var isText = res.contentType === STG.TYPE_TEXT;
+    v.className = 'verdict yes';
+    v.innerHTML = '<span class="ic">●</span><div>提取成功'
+      + '<small>数据来自「' + methodName + '」嵌入。</small></div>';
+
+    $('#stat-extract').innerHTML = statHTML([
+      { k: '嵌入方式', v: methodName },
+      { k: '内容类型', v: isText ? '文字' : '文件' },
+      { k: '数据大小', v: formatBytes(res.data.length) },
+      { k: '图片尺寸', v: s.w + '×' + s.h }
+    ]);
+
+    if (isText) {
+      $('#extract-text').value = STG.utf8Decode(res.data);
+      $('#extract-text-wrap').hidden = false;
+      $('#btn-copy-text').onclick = function () {
+        var txt = $('#extract-text').value;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(txt).then(
+            function () { toast('已复制到剪贴板'); },
+            function () { toast('复制失败，请手动选中后复制', true); }
+          );
+        } else {
+          $('#extract-text').select();
+          toast('已选中，请按 Ctrl+C 复制');
+        }
+      };
+    } else {
+      $('#extract-file-wrap').hidden = false;
+      $('#btn-dl-extract').onclick = function () {
+        var blob = new Blob([res.data], { type: 'application/octet-stream' });
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'extracted-' + Date.now() + '.bin';
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+      };
+    }
+    $('#res-extract').classList.add('on');
+  }
+
+  /* ==================== 初始化 ==================== */
+  ['enc-img', 'enc-wm', 'dec-img', 'dec-wm', 'det-target', 'det-origin', 'det-cand',
+    'stg-img', 'stgx-img'].forEach(initSlot);
+
+  var LABELS = {
+    'enc-img': '载体图', 'enc-wm': '水印图',
+    'dec-img': '原始载体图', 'dec-wm': '含水印图',
+    'det-target': '待检图', 'det-origin': '原图', 'det-cand': '候选水印',
+    'stg-img': '载体图', 'stgx-img': '待提取图'
+  };
+  Object.keys(LABELS).forEach(function (k) { slots[k].el.dataset.label = LABELS[k]; });
+
+  updateButtons();
+})();
+
+</script>
+</body>
+</html>
