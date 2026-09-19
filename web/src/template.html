@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>盲水印工坊 · FFT 频域盲水印合成 / 分离 / 检测</title>
+<style>
+/*__CSS__*/
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="logo">盲</div>
+    <div>
+      <h1>盲水印工坊</h1>
+      <p>FFT 频域盲水印 · 合成 / 分离 / 检测</p>
+    </div>
+  </div>
+  <nav class="tabs">
+    <button class="tab active" data-tab="encode">合成</button>
+    <button class="tab" data-tab="decode">分离</button>
+    <button class="tab" data-tab="detect">检测</button>
+  </nav>
+</header>
+
+<main>
+
+  <!-- ============ 全局参数 ============ -->
+  <div class="card">
+    <h2><span class="step">⚙</span>算法参数</h2>
+    <p class="hint">三个面板共用。合成与分离时的 <code>种子</code>、<code>强度</code>、<code>变换模式</code> 必须完全一致，否则解不出水印。</p>
+    <div class="opts">
+      <div class="field">
+        <label for="opt-seed">种子 seed</label>
+        <input type="number" id="opt-seed" value="20160930" step="1">
+      </div>
+      <div class="field">
+        <label for="opt-alpha">强度 alpha</label>
+        <div class="row">
+          <input type="range" id="opt-alpha" min="0.5" max="12" step="0.5" value="3">
+          <span class="val" id="opt-alpha-val">3.0</span>
+        </div>
+        <span class="sub">越大越抗压缩，但越容易被看出</span>
+      </div>
+      <div class="field">
+        <label for="opt-transform">变换模式</label>
+        <select id="opt-transform">
+          <option value="numpy">兼容原作（可与 Python 互解）</option>
+          <option value="channel">高质量（改动更小）</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="opt-backdrop">透明区域合成</label>
+        <select id="opt-backdrop">
+          <option value="white">合成到白底</option>
+          <option value="black">合成到黑底</option>
+          <option value="ignore">忽略透明通道</option>
+        </select>
+      </div>
+    </div>
+    <div class="note info" id="mode-note"></div>
+  </div>
+
+  <!-- ============ 合成 ============ -->
+  <section class="panel active" id="panel-encode">
+    <div class="card">
+      <h2><span class="step">1</span>选择图片</h2>
+      <p class="hint">左边是载体图（会被嵌入水印），右边是水印图。支持拖拽、点击选择，或直接 Ctrl+V 粘贴。</p>
+      <div class="slots two">
+        <div class="slot" data-slot="enc-img">
+          <div class="ph">
+            <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+            <b>载体图</b><span>拖入 / 点击选择 / Ctrl+V</span>
+          </div>
+        </div>
+        <div class="slot" data-slot="enc-wm">
+          <div class="ph">
+            <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/><rect x="15" y="14" width="6" height="6" rx="1"/></svg>
+            <b>水印图</b><span>高 &lt; 载体图高/2，宽 &lt; 载体图宽</span>
+          </div>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="btn ghost" id="btn-sample">载入示例图片</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2><span class="step">2</span>合成并下载</h2>
+      <p class="hint">水印会被打散后叠加到载体图的频域上，肉眼几乎看不出差别。</p>
+      <div class="actions">
+        <button class="btn primary" id="btn-run-encode" disabled>开始合成</button>
+      </div>
+      <div class="progress" id="prog-encode">
+        <div class="bar"><div class="fill"></div></div>
+        <div class="txt"></div>
+      </div>
+      <div class="result" id="res-encode">
+        <div class="stat-grid" id="stat-encode"></div>
+        <div class="preview">
+          <img id="img-encode-out" alt="合成结果">
+          <div class="cap">合成结果（已嵌入盲水印）</div>
+        </div>
+        <div class="actions">
+          <button class="btn primary" id="btn-dl-encode">下载合成图（PNG）</button>
+        </div>
+        <div class="note warn" id="encode-warn" hidden></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 分离 ============ -->
+  <section class="panel" id="panel-decode">
+    <div class="card">
+      <h2><span class="step">1</span>选择图片</h2>
+      <p class="hint">左：原始载体图（未加过水印的那张）。右：带水印的图。两张图必须尺寸完全一致。</p>
+      <div class="slots two">
+        <div class="slot" data-slot="dec-img">
+          <div class="ph">
+            <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+            <b>原始载体图</b><span>拖入 / 点击选择 / Ctrl+V</span>
+          </div>
+        </div>
+        <div class="slot" data-slot="dec-wm">
+          <div class="ph">
+            <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 12l3 3 5-6"/></svg>
+            <b>含水印图</b><span>尺寸需与左侧完全一致</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2><span class="step">2</span>分离水印</h2>
+      <p class="hint">利用两张图的频谱差分还原水印。若只关心"有没有水印"，可直接去「检测」面板。</p>
+      <div class="actions">
+        <button class="btn primary" id="btn-run-decode" disabled>开始分离</button>
+      </div>
+      <div class="progress" id="prog-decode">
+        <div class="bar"><div class="fill"></div></div>
+        <div class="txt"></div>
+      </div>
+      <div class="result" id="res-decode">
+        <div class="stat-grid" id="stat-decode"></div>
+        <div class="preview">
+          <img id="img-decode-out" alt="分离结果">
+          <div class="cap">分离出的水印（左上角为实际内容区，右下为其镜像副本）</div>
+        </div>
+        <div class="actions">
+          <button class="btn primary" id="btn-dl-decode">下载水印图（PNG）</button>
+          <button class="btn ghost" id="btn-enh-decode">增强显示</button>
+        </div>
+        <div class="note" id="decode-note"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 检测 ============ -->
+  <section class="panel" id="panel-detect">
+    <div class="card">
+      <h2><span class="step">1</span>选择图片</h2>
+      <p class="hint">给出<strong>原图</strong>可做精确检测（推荐）；不给则退化为频谱启发式盲检，结论仅供参考。</p>
+      <div class="slots three">
+        <div class="slot" data-slot="det-target">
+          <div class="ph">
+            <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+            <b>待检图</b><span>必选</span>
+          </div>
+        </div>
+        <div class="slot optional" data-slot="det-origin">
+          <div class="ph">
+            <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 12h8"/></svg>
+            <b>原图</b><span>可选 · 用于精确检测</span>
+          </div>
+        </div>
+        <div class="slot optional" data-slot="det-cand">
+          <div class="ph">
+            <svg viewBox="0 0 24 24"><path d="M12 3v18M3 12h18" stroke-dasharray="3 3"/><circle cx="12" cy="12" r="4"/></svg>
+            <b>候选水印</b><span>可选 · 用于核对</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2><span class="step">2</span>开始检测</h2>
+      <div class="actions">
+        <button class="btn primary" id="btn-run-detect" disabled>开始检测</button>
+      </div>
+      <div class="progress" id="prog-detect">
+        <div class="bar"><div class="fill"></div></div>
+        <div class="txt"></div>
+      </div>
+      <div class="result" id="res-detect">
+        <div class="verdict" id="det-verdict"><span class="ic"></span><div></div></div>
+        <div class="stat-grid" id="stat-detect"></div>
+        <div id="det-preview-wrap" hidden>
+          <div class="preview">
+            <img id="img-detect-out" alt="分离出的水印">
+            <div class="cap">从待检图中还原出的水印</div>
+          </div>
+          <div class="actions">
+            <button class="btn primary" id="btn-dl-detect">下载水印图（PNG）</button>
+          </div>
+        </div>
+        <div id="det-radial-wrap" hidden>
+          <div class="preview">
+            <canvas id="radial-canvas" width="880" height="260"></canvas>
+            <div class="cap">径向平均功率谱（对数坐标）—— 平坦的高频"地板"是水印的弱特征</div>
+          </div>
+        </div>
+        <div class="note" id="det-note"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 说明 ============ -->
+  <details class="help">
+    <summary>算法原理与使用须知</summary>
+    <div class="body">
+      <h3>一句话原理</h3>
+      <p>把水印图打散成噪声状的图案，直接<strong>加到位图的频域（FFT 结果）上</strong>，再逆变换回空间域。因为改的是频域的一个极小的量，画面看不出差别；解码时用「原图频谱」和「含水印图频谱」相减，就能把那个图案捞回来。</p>
+
+      <h3>完整流程（对齐 chishaxie/BlindWaterMark）</h3>
+      <ol>
+        <li>取一块 <code>(高/2, 宽)</code> 的空画布，把水印贴到左上角，得到 <code>hwm2</code>；</li>
+        <li>用种子 <code>seed</code> 驱动一个伪随机洗牌，生成两个置换 <code>m</code>（长度 高/2）和 <code>n</code>（长度 宽）；</li>
+        <li>令 <code>hwm[i][j] = hwm2[m[i]][n[j]]</code> —— 水印被彻底打散，看起来像噪声；</li>
+        <li>把 <code>hwm</code> 以 180° 翻转的方式镜像铺满整张画布，得到 <code>rwm</code>；</li>
+        <li><code>img_wm = real( ifft2( fft2(img) + alpha × rwm ) )</code> —— 水印叠加完成。</li>
+      </ol>
+      <p>分离就是反向：<code>rwm = real( (fft2(img_wm) − fft2(img)) / alpha )</code>，再按 <code>m</code>、<code>n</code> 把位置还原回去。</p>
+
+      <h3>关键约束</h3>
+      <ul>
+        <li><strong>必须提供原图</strong>。这是加法式频域盲水印的固有限制：分离本质上是做频谱差分，没有原图就没有基准。原图必须是<strong>加水印之前的那一张原始文件</strong>，重新保存过（哪怕只是重新编码）都会导致解不出来。</li>
+        <li><strong>水印尺寸受限</strong>：高度必须小于载体图高度的一半，宽度必须小于载体图宽度。</li>
+        <li><strong>用 PNG 保存</strong>。JPEG 是有损压缩，会破坏频域里的水印；本工具下载的一律为无损 PNG。</li>
+        <li><strong>不能缩放、裁剪、旋转</strong>含水印图，这些操作会直接毁掉水印。</li>
+      </ul>
+
+      <h3>为什么分离结果有条纹和噪点</h3>
+      <p>两个原因，都来自算法本身：</p>
+      <ul>
+        <li>原作用 <code>rwm[H-1-i][W-1-j]</code> 做镜像，而 DFT 意义上的对称是 <code>(H-i) mod H</code>，两者<strong>相差 1 个像素</strong>。这导致逆变换时约一半能量无法还原，表现为<strong>沿对角线方向 1 像素的双影</strong>，以及图片首行首列只有一半亮度。</li>
+        <li>解码时又用 <code>np.uint8()</code> 截断取整，量化误差被放大成可见的颗粒。</li>
+      </ul>
+      <p>本工具保留了这一行为以保证与 Python 版互解；如果你只在本工具内闭环使用，把「变换模式」切到<strong>高质量</strong>可以显著改善画质和分离效果。</p>
+
+      <h3>「兼容原作」与「高质量」两种模式的区别</h3>
+      <table class="tbl">
+        <tr><th>模式</th><th>做了什么</th><th>特点</th></tr>
+        <tr>
+          <td><strong>兼容原作</strong></td>
+          <td>复刻 <code>np.fft.fft2(img)</code> 对 <code>(H,W,3)</code> 数组的默认行为 —— 它的变换轴其实是「宽度轴 + 通道轴」，等价于逐行做 <code>(宽, 3)</code> 的二维变换</td>
+          <td>可与 Python 版互相解出；检测判据极灵敏；但图像改动略大（PSNR ≈ 41 dB）</td>
+        </tr>
+        <tr>
+          <td><strong>高质量</strong></td>
+          <td>每个颜色通道各自做一次真正的空间二维 FFT</td>
+          <td>改动极小、几乎完全无感（PSNR ≈ 58 dB）；但只有本工具能解，Python 版解不出来</td>
+        </tr>
+      </table>
+
+      <h3>关于「检测」</h3>
+      <p>精确检测用的是一个很干净的判据：水印只叠加在频域的<strong>实部</strong>上，所以「含水印图频谱 − 原图频谱」在理想情况下是纯实数的。若图中并没有水印，这个差值就只剩量化/压缩噪声，实部与虚部能量相当。于是：</p>
+      <ul>
+        <li><code>√(E实部 / E虚部) ≈ 1</code> —— 没有水印；</li>
+        <li><code>√(E实部 / E虚部) ≫ 1</code> —— 存在水印（实测可到 10 以上，而对照图只有 1.5 左右）。</li>
+      </ul>
+      <p>不给原图时的「盲检」只是看径向功率谱在高频有没有异常的平坦"地板"，<strong>会被图像本身的噪声和纹理干扰，不能作为判定依据</strong>，仅作参考。</p>
+
+      <h3>与 Python 原作互通</h3>
+      <p>本工具的随机数发生器完整复刻了 CPython 的 MT19937（<code>seed</code> / <code>getrandbits</code> / <code>_randbelow</code> / <code>shuffle</code>），FFT 也复刻了 numpy 的变换轴选择。在「兼容原作」模式下，网页的合成结果可以直接用 <code>bwmforpy3.py decode</code> 解出，反之亦然（需保证 <code>seed</code>、<code>alpha</code> 一致，且图片用 PNG 无损传递）。</p>
+      <p>源代码基于 GPL-3.0 的 <a href="https://github.com/chishaxie/BlindWaterMark" target="_blank" rel="noopener">chishaxie/BlindWaterMark</a> 算法重新实现。</p>
+    </div>
+  </details>
+
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/*__CORE__*/
+</script>
+<script>
+/*__APP__*/
+</script>
+</body>
+</html>
