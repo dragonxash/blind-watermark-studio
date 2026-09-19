@@ -1,10 +1,14 @@
 # Blind WaterMark Studio
 
-> **FFT 频域盲水印工具** —— 网页版 + 安卓 App
-> 水印的 **合成 / 分离 / 检测**，兼容 [chishaxie/BlindWaterMark](https://github.com/chishaxie/BlindWaterMark) 的算法实现
+> **盲水印工具集** —— 网页版 + 安卓 App
+> 图片水印的 **合成 / 分离 / 检测** + 数据的 **隐写**（文字 / 任意文件）
+> FFT 引擎兼容 [chishaxie/BlindWaterMark](https://github.com/chishaxie/BlindWaterMark) 的算法实现
 
 把水印图打散成噪声状的图案，直接叠加到位图的**频域**上。画面看不出差别，
 但只要有原图，就能用频谱差分把水印精确捞回来。
+
+同一个工具里还内置了两条**免原图**的数据隐写路线（DWT-DCT-SVD 与 LSB），
+可以把一段文字或一个任意文件藏进图片，只凭密码取回。
 
 ---
 
@@ -17,15 +21,30 @@
 | 代码 | [`web/`](web/) | [`android/`](android/) |
 | 适用 | 桌面端批量处理、随手验证 | 手机端随时处理 |
 
-两版算法完全对齐，`seed` 与 `alpha` 一致时结果可互相解出。
+两版算法完全对齐：`seed` 与 `alpha` 一致时 FFT 水印可互相解出；
+隐写引擎的容器格式与密码置换也完全一致 —— **网页版藏的数据，App 能取出来，反之亦然**
+（这一点用跨语言测试向量逐项验证过，不是推断）。
 
 ---
 
 ## 功能
 
+三个面板对应三种**图片水印**操作，第四个面板是**数据隐写**：
+
 - **合成** —— 载体图 + 水印图 → 带盲水印的图，实时给出 PSNR / 最大像素偏差 / RMS 误差
 - **分离** —— 原图 + 含水印图 → 还原出水印，附「增强显示」把压在灰噪声上的轮廓拉出来
 - **检测** —— 判定图中是否存在盲水印，可选用候选水印核对（归一化互相关打分）
+- **隐写** —— 把**文字**或**任意文件**藏进图片，提取时**不需要原图**，只要记得密码
+
+### 三个嵌入引擎的分工
+
+| 引擎 | 藏什么 | 容量（1024×1024） | 免原图 | 抗压缩 | 备注 |
+|---|---|---|---|---|---|
+| **FFT 加法式** | 图片水印 | 大 | ✗ 必须给原图 | 弱 | 前三个面板用的，与原作互通 |
+| **DWT-DCT-SVD** | 文字 / 短数据 | 约 6 KB | ✅ | 较强 | 隐写面板的「鲁棒模式」 |
+| **LSB** | 任意文件 | 约 393 KB | ✅ | 无 | 隐写面板的「大容量模式」，须保持 PNG |
+
+三者可以叠加使用：同一张图上先用 FFT 藏图片水印、再用 LSB 藏数据，两者各自都能解出来（已有测试覆盖）。
 
 ---
 
@@ -107,22 +126,34 @@ print(f[0,0,0].real)              # 等于 img[0,:,:].sum()  → 变换轴是 (1
 
 ## 快速开始
 
-### 网页版
+### 网页版 —— 在线直接用
 
-直接用浏览器打开 [`web/index.html`](web/index.html)，无需任何依赖与网络。
+**<https://dragonxash.github.io/blind-watermark-studio/>**
+
+打开即用，无需安装，也不需要联网（算法全部在本地浏览器里跑，图片不会上传到任何服务器）。
 点「载入示例图片」可以立刻跑一遍完整流程。
+
+也可以下载 [`web/index.html`](web/index.html) 双击打开 —— 单文件、完全离线。
 
 ### 安卓版
 
+**下载 APK**：[Releases](https://github.com/dragonxash/blind-watermark-studio/releases) 页面取最新版
+
+或自行构建：
+
 ```bash
-# 下载 APK（见 Releases 页），或自行构建：
 cd android
-./gradlew assembleRelease     # 产物在 app/build/outputs/apk/release/
+gradle assembleDebug          # 产物在 app/build/outputs/apk/debug/
 ```
+
+构建需要 `ANDROID_HOME` 指向 Android SDK（platform 34 + build-tools 34.0.0），
+JDK 17 及以上。首次构建会下载 AGP 与 AndroidX 依赖。
 
 ---
 
 ## 使用须知
+
+### FFT 面板（合成 / 分离 / 检测）
 
 - **必须有原图**。这是加法式频域盲水印的固有限制 —— 分离本质上是频谱差分，
   没有原图就没有基准。而且原图必须是**加水印之前的那一份原始文件**，
@@ -131,20 +162,38 @@ cd android
 - **用 PNG 保存**。JPEG 是有损压缩，会破坏频域里的水印。
 - **不能缩放、裁剪、旋转**含水印图，这些操作会直接毁掉水印。
 
+### 隐写面板（文字 / 文件）
+
+- **不需要原图**，只要密码正确、图片没被重新处理过即可。
+- **图片尺寸必须与嵌入时完全一致**：鲁棒模式按 4×4 分块定位，缩放会让块边界整体错位。
+- **大容量模式必须保持 PNG**。它写的是像素最低位，任何有损处理都会立刻摧毁数据。
+- **鲁棒模式能扛住一定程度的噪声与 JPEG 压缩**（测试中 ±6 像素抖动后仍能完整提取），
+  但对缩放同样敏感。
+- **密码决定数据的排列位置**。密码错误时容器头部校验不通过，会直接报「未提取到数据」。
+- 容量参考：鲁棒模式 ≈ 宽×高×3/64 bit，1024×1024 约 6 KB；
+  大容量模式 ≈ 宽×高×3/8 字节，1024×1024 约 393 KB。
+
 ---
 
 ## 验证情况
 
-核心算法经过两层交叉验证，全部通过：
+三个实现（Python 原作、网页版 JavaScript、安卓 Kotlin）互相交叉验证，全部通过：
 
 | 层面 | 方式 | 结果 |
 |---|---|---|
 | JS ↔ Python | 用 `bwmforpy3.py` 导出测试向量，逐层比对（RNG 序列 → 水印图案 → FFT → encode/decode） | 全绿 |
-| 浏览器端 | 注入自检脚本走完整流程（上传→合成→分离→检测→边界报错） | 29/29 |
+| Kotlin ↔ JS | 用 `stego.js` 导出跨语言向量，比对密码置换 / LSB 输出 / 鲁棒提取 | **14/14** |
+| Kotlin ↔ Python | 同上（FFT 引擎） | **9/9** |
+| 浏览器端 | 注入自检脚本走完整流程（上传 → 合成 → 分离 → 检测 → 隐写 → 边界报错） | **36/36** |
 
 关键交叉验证数据：
 
-- CPython MT19937 完整复刻，`shuffle(1000)` 的加权校验和与 Python **完全一致**
+- **CPython MT19937 完整复刻**，`shuffle(1000)` 的加权校验和与 Python **完全一致**
+- **隐写引擎的密码置换两端完全一致**：5 组不同长度与密码的加权校验和、逐项前 32 位均相等
+- **LSB 嵌入输出与网页版逐字节相同**，连改动的位数都一致（2109 bit）
+- **跨语言互操作实测**：网页版嵌入的鲁棒水印由 Kotlin 解出、LSB 数据由 Kotlin 提取，
+  内容完全一致（反向亦然，因为算法对称）
+- 隐写鲁棒模式在 **±6 像素随机抖动**后仍能完整提取（这正是它存在的意义）
 - `encode` 浮点输出最大误差 **5e-8**；FFT 与 numpy 直接对照误差 **5e-7**（受 JSON 的 10 位有效数字限制）
 - 解码中间量 `rwm` 最大误差 **1.2e-12**
 - 单像素 +1 扰动实验：判据比值 = **1.0000**（理论预期值）
@@ -163,13 +212,16 @@ cd android
 │   ├── build.mjs               把 src/ 内联成单文件
 │   ├── src/
 │   │   ├── core.js             算法核心：CPython MT19937 + FFT + 编解码 + 检测
+│   │   ├── stego.js            隐写引擎：DWT-DCT-SVD（QIM）+ LSB + 容器格式
 │   │   ├── app.js              界面逻辑
 │   │   ├── style.css
 │   │   ├── template.html
 │   │   └── selftest.js         浏览器自检脚本
 │   └── test/
 │       ├── make_ref.py         Python 参考实现，导出 ref.json
-│       ├── verify.js           Node 端逐项比对
+│       ├── verify.js           Node 端逐项比对（FFT 引擎）
+│       ├── stego-test.js       隐写引擎自检
+│       ├── make-stego-ref.js   导出跨语言向量 stego-ref.json（供 Kotlin 比对）
 │       ├── e2e.js              端到端实测 + 极简 PNG 编码器
 │       └── probe*.js           分层调试脚本
 └── android/                    安卓版（Kotlin）
@@ -178,8 +230,16 @@ cd android
     │   │   ├── Prng.kt         CPython 兼容 MT19937
     │   │   ├── Fft.kt          radix-2 + Bluestein，任意长度
     │   │   ├── BlindWatermark.kt  编解码与检测
+    │   │   ├── Stego.kt        隐写引擎（与 stego.js 字节级兼容）
     │   │   └── ImageCodec.kt   Bitmap ↔ 平面数据
     │   └── ui/
+    │       ├── BaseFragment.kt     选图 / 存图 / 后台任务 / 进度
+    │       ├── SlotView.kt         图片槽位
+    │       ├── EncodeFragment.kt   合成
+    │       ├── DecodeFragment.kt   分离
+    │       ├── DetectFragment.kt   检测
+    │       └── StegoFragment.kt    隐写（文字 / 文件）
+    ├── app/src/test/           与 Python、JS 参考实现的比对测试
     └── setup/setup_sdk*.py     Android SDK 引导脚本
 ```
 

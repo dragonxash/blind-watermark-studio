@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">盲水印工坊</string>
+    <string name="app_subtitle">FFT 频域盲水印 · 合成 / 分离 / 检测</string>
+
+    <string name="tab_encode">合成</string>
+    <string name="tab_decode">分离</string>
+    <string name="tab_detect">检测</string>
+
+    <!-- ============ 参数 ============ -->
+    <string name="opt_title">算法参数</string>
+    <string name="opt_hint">三个面板共用。合成与分离时的种子、强度、变换模式必须完全一致，否则解不出水印。</string>
+    <string name="opt_seed">种子 seed</string>
+    <string name="opt_alpha">强度 alpha</string>
+    <string name="opt_alpha_tip">越大越抗压缩，但越容易被看出</string>
+    <string name="opt_mode">变换模式</string>
+    <string name="opt_backdrop">透明区域合成</string>
+
+    <string name="mode_numpy">兼容原作（可与 Python 互解）</string>
+    <string name="mode_channel">高质量（改动更小）</string>
+    <string name="mode_note_numpy">兼容原作：复刻 np.fft.fft2 对 (H,W,3) 的默认变换轴（宽度轴 + 通道轴），结果可与 Python 版 bwmforpy3.py 互相解出。检测判据灵敏，但图像改动相对大一些。</string>
+    <string name="mode_note_channel">高质量：每个颜色通道独立做空间二维 FFT，图像改动极小（PSNR 通常 55 dB 以上），肉眼完全无感。代价是只有本 App 能解出，Python 原作脚本解不出来。</string>
+
+    <string name="backdrop_white">合成到白底</string>
+    <string name="backdrop_black">合成到黑底</string>
+    <string name="backdrop_ignore">忽略透明通道</string>
+
+    <!-- ============ 合成 ============ -->
+    <string name="enc_step1">① 选择图片</string>
+    <string name="enc_step1_hint">左：载体图（会被嵌入水印）　右：水印图。\n水印高度须小于载体图的一半，宽度须小于载体图宽度。</string>
+    <string name="enc_pick_img">点击选择载体图</string>
+    <string name="enc_pick_wm">点击选择水印图</string>
+    <string name="enc_step2">② 合成并保存</string>
+    <string name="enc_step2_hint">水印会被打散后叠加到载体图的频域上，肉眼几乎看不出差别。结果一律以 PNG 无损保存。</string>
+    <string name="enc_run">开始合成</string>
+    <string name="enc_save">保存合成图</string>
+
+    <!-- ============ 分离 ============ -->
+    <string name="dec_step1">① 选择图片</string>
+    <string name="dec_step1_hint">左：原始载体图（未加过水印的那张）　右：带水印的图。\n两张图必须尺寸完全一致。</string>
+    <string name="dec_pick_img">点击选择原始载体图</string>
+    <string name="dec_pick_wm">点击选择含水印图</string>
+    <string name="dec_step2">② 分离水印</string>
+    <string name="dec_step2_hint">利用两张图的频谱差分还原水印。噪点与对角双影来自算法本身，可用「增强显示」把轮廓拉出来。</string>
+    <string name="dec_run">开始分离</string>
+    <string name="dec_save">保存水印图</string>
+    <string name="dec_enhance">增强显示</string>
+    <string name="dec_original">查看原始</string>
+
+    <!-- ============ 检测 ============ -->
+    <string name="det_step1">① 选择图片</string>
+    <string name="det_step1_hint">给出原图可做精确检测（推荐）；不给则退化为频谱启发式盲检，结论仅供参考。</string>
+    <string name="det_pick_target">点击选择待检图（必选）</string>
+    <string name="det_pick_origin">可选：原图（精确检测）</string>
+    <string name="det_pick_cand">可选：候选水印（核对）</string>
+    <string name="det_step2">② 开始检测</string>
+    <string name="det_run">开始检测</string>
+    <string name="det_save">保存还原的水印</string>
+
+    <!-- ============ 通用 ============ -->
+    <string name="btn_clear">清除</string>
+    <string name="processing">处理中…</string>
+    <string name="cancel">取消</string>
+    <string name="pick_image">选择图片</string>
+
+    <string name="err_need_two_images">请先选择两张图片</string>
+    <string name="err_need_target">请先选择待检图</string>
+    <string name="err_size_mismatch">两张图尺寸必须一致</string>
+    <string name="err_save_failed">保存失败</string>
+    <string name="saved_ok">已保存</string>
+
+    <string name="det_no_watermark">未检测到水印</string>
+    <string name="det_has_watermark">检测到盲水印</string>
+    <string name="det_maybe_watermark">疑似存在水印</string>
+
+    <string name="about_title">算法原理与使用须知</string>
+
+    <!-- ============ 隐写（文字 / 文件） ============ -->
+    <string name="tab_stego">隐写</string>
+    <string name="stg_seg_embed">嵌入数据</string>
+    <string name="stg_seg_extract">提取数据</string>
+
+    <string name="stg_embed_intro">这里藏的是数据（文字或任意文件），而且提取时不需要原图——只要记得密码。容量有限，并且会改动像素，结果务必用 PNG 保存。</string>
+
+    <string name="stg_step1">① 载体图</string>
+    <string name="stg_step1_hint">用来承载隐藏数据的图片。内容越复杂（照片、纹理）越不显眼；纯色大色块容易被看出改动。</string>
+    <string name="stg_pick_img">点击选择载体图</string>
+
+    <string name="stg_step2">② 藏什么</string>
+    <string name="stg_kind_text">文字</string>
+    <string name="stg_kind_file">任意文件</string>
+    <string name="stg_text_hint">输入要隐藏的文字，比如版权声明、联系方式、一段悄悄话…</string>
+    <string name="stg_pick_file">选择文件…</string>
+    <string name="stg_no_file">尚未选择文件</string>
+
+    <string name="stg_step3">③ 嵌入方式与密码</string>
+    <string name="stg_method">方式</string>
+    <string name="stg_password">密码</string>
+    <string name="stg_robust">鲁棒模式 · 免原图 · 抗压缩</string>
+    <string name="stg_lsb">大容量模式 · 免原图 · 任意文件</string>
+
+    <string name="stg_step4">④ 嵌入并保存</string>
+    <string name="stg_run_embed">开始嵌入</string>
+    <string name="stg_save_img">保存载体图（PNG）</string>
+
+    <string name="stgx_step1">① 待提取的图</string>
+    <string name="stgx_step1_hint">就是刚才那张嵌入过数据的图。不需要原图，但尺寸须与嵌入时一致。</string>
+    <string name="stgx_pick_img">点击选择待提取图</string>
+    <string name="stgx_step2">② 密码</string>
+    <string name="stgx_password_tip">必须与嵌入时完全一致</string>
+    <string name="stgx_step3">③ 提取</string>
+    <string name="stgx_run">开始提取</string>
+    <string name="stgx_text_label">提取到的文字</string>
+    <string name="stgx_copy">复制文字</string>
+    <string name="stgx_save_file">保存还原的文件</string>
+
+    <string name="stg_err_no_image">请先选择载体图</string>
+    <string name="stg_err_no_content">请先输入文字或选择文件</string>
+    <string name="stg_err_no_target">请先选择待提取的图</string>
+    <string name="stg_nothing_found">未提取到数据</string>
+    <string name="stg_nothing_found_sub">这张图里没有本工具写入的数据，或者密码不对。</string>
+    <string name="stg_ok">提取成功</string>
+    <string name="stg_copied">已复制到剪贴板</string>
+    <string name="stg_need_image_first">先选好载体图，这里会显示可用容量</string>
+</resources>

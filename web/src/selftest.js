@@ -89,8 +89,10 @@
     var tAll = Date.now();
     try {
       ok('BWM 核心库已加载', typeof window.BWM === 'object' && typeof BWM.encode === 'function');
-      ok('三个面板均在 DOM 中', document.querySelectorAll('.panel').length === 3);
-      ok('槽位数量正确', document.querySelectorAll('.slot').length === 7);
+      ok('隐写引擎已加载', typeof window.BWMStego === 'object'
+        && typeof BWMStego.embedRobust === 'function');
+      ok('四个面板均在 DOM 中', document.querySelectorAll('.panel').length === 4);
+      ok('槽位数量正确', document.querySelectorAll('.slot').length === 9);
 
       /* ---------- 素材：原图只生成一次，三个面板复用同一张 ---------- */
       var photoCv = makePhoto(256, 256);
@@ -175,6 +177,55 @@
       /* ---------- Tab 切换 ---------- */
       document.querySelector('.tab[data-tab="decode"]').click();
       ok('Tab 切换生效', document.getElementById('panel-decode').classList.contains('active'));
+      document.querySelector('.tab[data-tab="encode"]').click();
+
+      /* ---------- 隐写面板：嵌入文字 -> 提取 ---------- */
+      document.querySelector('.tab[data-tab="stego"]').click();
+      ok('隐写 Tab 可打开',
+        document.getElementById('panel-stego').classList.contains('active'));
+
+      dropInto('stg-img', await canvasToFile(photoCv, 'carrier.png'));
+      await waitFor(function () { return filled('stg-img'); }, 8000, '隐写载体图');
+
+      const secret = '这是一段隐藏的文字 · hidden payload 2026';
+      const stgText = document.getElementById('stg-text');
+      stgText.value = secret;
+      stgText.dispatchEvent(new Event('input'));
+      const capText = document.getElementById('stg-capacity').textContent;
+      ok('容量提示已渲染', /容量约/.test(capText), capText.slice(0, 64));
+
+      document.getElementById('btn-run-stego').click();
+      await waitFor(function () {
+        return document.getElementById('res-stego').classList.contains('on');
+      }, 60000, '隐写嵌入');
+      const stegoStats = document.getElementById('stat-stego').textContent.replace(/\s+/g, ' ');
+      ok('鲁棒嵌入完成并出图', /PSNR/.test(stegoStats), stegoStats.slice(0, 78));
+      const stegoUrl = document.getElementById('img-stego-out').src;
+
+      // 切到提取页
+      document.querySelector('.segtab[data-seg="extract"]').click();
+      ok('切换到提取页', document.getElementById('seg-extract').hidden === false);
+
+      dropInto('stgx-img', await dataURLToFile(stegoUrl, 'stego.png'));
+      await waitFor(function () { return filled('stgx-img'); }, 8000, '待提取图');
+      document.getElementById('btn-run-extract').click();
+      await waitFor(function () {
+        return document.getElementById('res-extract').classList.contains('on')
+          && document.getElementById('extract-text-wrap').hidden === false;
+      }, 60000, '提取数据');
+      const gotText = document.getElementById('extract-text').value;
+      ok('提取出正确的文字（免原图）', gotText === secret,
+        JSON.stringify(gotText.slice(0, 40)));
+
+      // 错误密码应当提取失败
+      document.getElementById('stgx-password').value = '99999999';
+      document.getElementById('btn-run-extract').click();
+      await waitFor(function () {
+        return document.getElementById('extract-verdict').className.indexOf('no') >= 0;
+      }, 60000, '错误密码提取');
+      ok('错误密码提取失败', true);
+      document.getElementById('stgx-password').value = '20260919';
+
       document.querySelector('.tab[data-tab="encode"]').click();
 
       /* ---------- 边界：水印过大 ---------- */
@@ -363,7 +414,7 @@
 
     /* ---------- 按 hash 停在指定面板，便于逐屏截图 ---------- */
     var want = (location.hash || '').replace(/^#/, '');
-    if (['encode', 'decode', 'detect'].indexOf(want) >= 0) {
+    if (['encode', 'decode', 'detect', 'stego'].indexOf(want) >= 0) {
       var tb = document.querySelector('.tab[data-tab="' + want + '"]');
       if (tb) tb.click();
       window.scrollTo(0, 0);

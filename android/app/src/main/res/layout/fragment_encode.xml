@@ -1,0 +1,238 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="14dp">
+
+        <!-- ========== 选择图片 ========== -->
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:cardCornerRadius="10dp"
+            app:cardElevation="1dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <TextView
+                    style="@style/CardTitle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/enc_step1" />
+
+                <TextView
+                    style="@style/CardHint"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:text="@string/enc_step1_hint" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:orientation="horizontal">
+
+                    <!-- 载体图 -->
+                    <LinearLayout
+                        android:id="@+id/encImgSlot"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_slot"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:orientation="vertical"
+                        android:padding="8dp">
+
+                        <FrameLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="120dp">
+
+                            <TextView
+                                android:id="@+id/encImgHint"
+                                android:layout_width="match_parent"
+                                android:layout_height="match_parent"
+                                android:gravity="center"
+                                android:padding="6dp"
+                                android:text="@string/enc_pick_img"
+                                android:textColor="@color/text_faint"
+                                android:textSize="12sp" />
+
+                            <ImageView
+                                android:id="@+id/encImgPreview"
+                                android:layout_width="match_parent"
+                                android:layout_height="match_parent"
+                                android:contentDescription="@string/enc_pick_img"
+                                android:scaleType="fitCenter"
+                                android:visibility="gone" />
+                        </FrameLayout>
+
+                        <TextView
+                            android:id="@+id/encImgMeta"
+                            style="@style/SlotMeta"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            tools:text="640 × 480 px" />
+                    </LinearLayout>
+
+                    <Space
+                        android:layout_width="10dp"
+                        android:layout_height="1dp" />
+
+                    <!-- 水印图 -->
+                    <LinearLayout
+                        android:id="@+id/encWmSlot"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_slot"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:orientation="vertical"
+                        android:padding="8dp">
+
+                        <FrameLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="120dp">
+
+                            <TextView
+                                android:id="@+id/encWmHint"
+                                android:layout_width="match_parent"
+                                android:layout_height="match_parent"
+                                android:gravity="center"
+                                android:padding="6dp"
+                                android:text="@string/enc_pick_wm"
+                                android:textColor="@color/text_faint"
+                                android:textSize="12sp" />
+
+                            <ImageView
+                                android:id="@+id/encWmPreview"
+                                android:layout_width="match_parent"
+                                android:layout_height="match_parent"
+                                android:contentDescription="@string/enc_pick_wm"
+                                android:scaleType="fitCenter"
+                                android:visibility="gone" />
+                        </FrameLayout>
+
+                        <TextView
+                            android:id="@+id/encWmMeta"
+                            style="@style/SlotMeta"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            tools:text="180 × 84 px" />
+                    </LinearLayout>
+                </LinearLayout>
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- ========== 参数 ========== -->
+        <include
+            android:id="@+id/opts"
+            layout="@layout/part_options"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp" />
+
+        <!-- ========== 合成 ========== -->
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            app:cardCornerRadius="10dp"
+            app:cardElevation="1dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <TextView
+                    style="@style/CardTitle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/enc_step2" />
+
+                <TextView
+                    style="@style/CardHint"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:text="@string/enc_step2_hint" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnRun"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:text="@string/enc_run" />
+
+                <ProgressBar
+                    android:id="@+id/progBar"
+                    style="?android:attr/progressBarStyleHorizontal"
+                    android:layout_width="match_parent"
+                    android:layout_height="6dp"
+                    android:layout_marginTop="12dp"
+                    android:max="1000"
+                    android:visibility="gone"
+                    tools:visibility="visible" />
+
+                <TextView
+                    android:id="@+id/progText"
+                    style="@style/CardHint"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:visibility="gone"
+                    tools:text="处理中 45%　已用 1.2 s"
+                    tools:visibility="visible" />
+
+                <LinearLayout
+                    android:id="@+id/resBox"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:orientation="vertical"
+                    android:visibility="gone"
+                    tools:visibility="visible">
+
+                    <TextView
+                        android:id="@+id/statText"
+                        style="@style/StatText"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        tools:text="输出尺寸 640×480\nPSNR 40.72 dB\n最大像素偏差 159\nRMS 误差 2.35" />
+
+                    <ImageView
+                        android:id="@+id/previewImage"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:adjustViewBounds="true"
+                        android:contentDescription="@string/enc_save"
+                        android:maxHeight="360dp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnSave"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:text="@string/enc_save" />
+                </LinearLayout>
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+    </LinearLayout>
+</ScrollView>

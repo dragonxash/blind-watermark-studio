@@ -22,6 +22,7 @@
     <button class="tab active" data-tab="encode">合成</button>
     <button class="tab" data-tab="decode">分离</button>
     <button class="tab" data-tab="detect">检测</button>
+    <button class="tab" data-tab="stego">隐写</button>
   </nav>
 </header>
 
@@ -30,7 +31,7 @@
   <!-- ============ 全局参数 ============ -->
   <div class="card">
     <h2><span class="step">⚙</span>算法参数</h2>
-    <p class="hint">三个面板共用。合成与分离时的 <code>种子</code>、<code>强度</code>、<code>变换模式</code> 必须完全一致，否则解不出水印。</p>
+    <p class="hint">合成 / 分离 / 检测三个面板共用。合成与分离时的 <code>种子</code>、<code>强度</code>、<code>变换模式</code> 必须完全一致，否则解不出水印。隐写面板另有自己的密码。</p>
     <div class="opts">
       <div class="field">
         <label for="opt-seed">种子 seed</label>
@@ -216,6 +217,157 @@
     </div>
   </section>
 
+  <!-- ============ 隐写 ============ -->
+  <section class="panel" id="panel-stego">
+    <div class="note info" style="margin:0 0 14px">
+      <b>和上面三个面板不是一回事</b>：这里藏的是<strong>数据</strong>（文字或任意文件），
+      而且<strong>提取时不需要原图</strong>——只要记得密码就行。
+      代价是容量小（鲁棒模式约几 KB），并且会改动像素，务必用 PNG 保存。
+    </div>
+
+    <div class="segtabs">
+      <button class="segtab active" data-seg="embed">嵌入数据</button>
+      <button class="segtab" data-seg="extract">提取数据</button>
+    </div>
+
+    <!-- ================= 嵌入 ================= -->
+    <div id="seg-embed">
+
+      <div class="card">
+        <h2><span class="step">1</span>载体图</h2>
+        <p class="hint">用来承载隐藏数据的图片。内容越复杂（照片、纹理）越不显眼；纯色大色块容易被看出改动。</p>
+        <div class="slots one">
+          <div class="slot" data-slot="stg-img">
+            <div class="ph">
+              <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+              <b>载体图</b><span>拖入 / 点击选择 / Ctrl+V</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2><span class="step">2</span>藏什么</h2>
+        <div class="segtabs small" id="stg-kind-tabs">
+          <button class="segtab active" data-kind="text">文字</button>
+          <button class="segtab" data-kind="file">任意文件</button>
+        </div>
+        <div id="kind-text">
+          <textarea id="stg-text" rows="4" placeholder="输入要隐藏的文字，比如版权声明、联系方式、一段悄悄话…"></textarea>
+          <div class="hint" id="stg-text-meta"></div>
+        </div>
+        <div id="kind-file" hidden>
+          <input type="file" id="stg-file-input" hidden>
+          <div class="actions" style="margin-top:0">
+            <button class="btn ghost" id="stg-pick-file">选择文件…</button>
+          </div>
+          <div class="hint" id="stg-file-info">尚未选择文件</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2><span class="step">3</span>嵌入方式与密码</h2>
+        <div class="opts">
+          <div class="field">
+            <label for="stg-method">方式</label>
+            <select id="stg-method">
+              <option value="robust">鲁棒模式 · 免原图 · 抗压缩</option>
+              <option value="lsb">大容量模式 · 免原图 · 任意文件</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="stg-password">密码</label>
+            <input type="number" id="stg-password" value="20260919">
+          </div>
+        </div>
+        <div class="note" id="stg-capacity"></div>
+      </div>
+
+      <div class="card">
+        <h2><span class="step">4</span>嵌入并保存</h2>
+        <div class="actions">
+          <button class="btn primary" id="btn-run-stego" disabled>开始嵌入</button>
+        </div>
+        <div class="progress" id="prog-stego">
+          <div class="bar"><div class="fill"></div></div>
+          <div class="txt"></div>
+        </div>
+        <div class="result" id="res-stego">
+          <div class="verdict yes" id="stego-verdict">
+            <span class="ic">●</span>
+            <div>嵌入完成<small id="stego-verdict-sub"></small></div>
+          </div>
+          <div class="stat-grid" id="stat-stego"></div>
+          <div class="preview">
+            <img id="img-stego-out" alt="嵌入结果">
+            <div class="cap">嵌入结果（务必以 PNG 保存与传递）</div>
+          </div>
+          <div class="actions">
+            <button class="btn primary" id="btn-dl-stego">下载载体图（PNG）</button>
+          </div>
+          <div class="note warn" id="stego-warn" hidden></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= 提取 ================= -->
+    <div id="seg-extract" hidden>
+      <div class="card">
+        <h2><span class="step">1</span>待提取的图</h2>
+        <p class="hint">就是刚才那张嵌入过数据的图。<strong>不需要原图</strong>，但尺寸须与嵌入时一致。</p>
+        <div class="slots one">
+          <div class="slot" data-slot="stgx-img">
+            <div class="ph">
+              <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+              <b>待提取图</b><span>拖入 / 点击选择 / Ctrl+V</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2><span class="step">2</span>密码</h2>
+        <div class="opts">
+          <div class="field">
+            <label for="stgx-password">密码</label>
+            <input type="number" id="stgx-password" value="20260919">
+            <span class="sub">必须与嵌入时完全一致</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2><span class="step">3</span>提取</h2>
+        <div class="actions">
+          <button class="btn primary" id="btn-run-extract" disabled>开始提取</button>
+        </div>
+        <div class="progress" id="prog-extract">
+          <div class="bar"><div class="fill"></div></div>
+          <div class="txt"></div>
+        </div>
+        <div class="result" id="res-extract">
+          <div class="verdict" id="extract-verdict">
+            <span class="ic">●</span>
+            <div id="extract-verdict-text"></div>
+          </div>
+          <div class="stat-grid" id="stat-extract"></div>
+          <div id="extract-text-wrap" hidden>
+            <label class="field-label" style="display:block;margin:14px 0 5px;font-size:12px;font-weight:600;color:var(--fg-dim)">提取到的文字</label>
+            <textarea id="extract-text" rows="5" readonly></textarea>
+            <div class="actions">
+              <button class="btn ghost" id="btn-copy-text">复制文字</button>
+            </div>
+          </div>
+          <div id="extract-file-wrap" hidden>
+            <div class="actions">
+              <button class="btn primary" id="btn-dl-extract">下载还原的文件</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- ============ 说明 ============ -->
   <details class="help">
     <summary>算法原理与使用须知</summary>
@@ -264,6 +416,32 @@
         </tr>
       </table>
 
+      <h3>第四个面板：隐写（藏文字 / 任意文件）</h3>
+      <p>上面三个面板藏的是<strong>图片</strong>，而且提取必须提供原图。隐写面板换了一条完全不同的技术路线——
+      藏的是<strong>数据</strong>，而且<strong>不需要原图</strong>。</p>
+      <table class="tbl">
+        <tr><th>引擎</th><th>藏什么</th><th>容量（1024×1024）</th><th>免原图</th><th>抗压缩</th></tr>
+        <tr><td>FFT 加法式（前三个面板）</td><td>图片水印</td><td>大</td><td>否</td><td>弱</td></tr>
+        <tr><td><strong>DWT-DCT-SVD</strong>（鲁棒模式）</td><td>文字 / 短数据</td><td>约 6 KB</td><td><b>是</b></td><td>较强</td></tr>
+        <tr><td><strong>LSB</strong>（大容量模式）</td><td>任意文件</td><td>约 393 KB</td><td><b>是</b></td><td>无</td></tr>
+      </table>
+
+      <h3>鲁棒模式为什么不需要原图</h3>
+      <p>它对图像做一级 Haar 小波分解取低频子带（LL），分成 4×4 块，每块做 DCT，
+      再对系数矩阵做 SVD，然后用「量化索引调制」把 1 个 bit 写进最大奇异值 s0：</p>
+      <p><code>q = floor(s0 / delta)</code>　→　<code>q' = 2*floor(q/2) + bit</code>　→　<code>s0' = (q' + 0.5) * delta</code></p>
+      <p>格点序号的<strong>奇偶本身携带了 bit</strong>，提取时把 s0 除回去取整就能读出来，
+      <strong>根本不需要知道原始 s0</strong>。又因为奇异值对图像扰动不敏感，
+      所以图片经过一定程度的压缩后仍能原样读回（实测 ±6 级像素抖动依然可解）。</p>
+      <p><strong>代价</strong>：容量小（约 (高/8)×(宽/8)×3 个 bit），而且对<strong>缩放和裁剪敏感</strong>——
+      DWT 的分块位置一旦错开就提取失败。所以不要改尺寸。</p>
+
+      <h3>大容量模式（LSB）</h3>
+      <p>直接把数据按位写进像素最低有效位。容量是鲁棒模式的上百倍，同样免原图，画质几乎无损（PSNR 通常 60 dB 以上）。
+      但它<strong>没有任何鲁棒性</strong>：只要图片被 JPEG 压缩、缩放、截图或旋转，数据就彻底没了。
+      用它就必须原样保存与传递 PNG。</p>
+      <p><strong>密码</strong>用于打散写入位置，提取时必须填一致。密码不对会因容器头部校验失败而直接报「没有提取到数据」。</p>
+
       <h3>关于「检测」</h3>
       <p>精确检测用的是一个很干净的判据：水印只叠加在频域的<strong>实部</strong>上，所以「含水印图频谱 − 原图频谱」在理想情况下是纯实数的。若图中并没有水印，这个差值就只剩量化/压缩噪声，实部与虚部能量相当。于是：</p>
       <ul>
@@ -284,6 +462,9 @@
 
 <script>
 /*__CORE__*/
+</script>
+<script>
+/*__STEGO__*/
 </script>
 <script>
 /*__APP__*/

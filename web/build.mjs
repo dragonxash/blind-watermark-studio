@@ -12,9 +12,10 @@ const read = (p) => fs.readFileSync(path.join(root, p), 'utf8');
 const tpl = read('src/template.html');
 const css = read('src/style.css');
 const core = read('src/core.js');
+const stego = read('src/stego.js');
 const app = read('src/app.js');
 
-for (const [name, src] of [['core.js', core], ['app.js', app]]) {
+for (const [name, src] of [['core.js', core], ['stego.js', stego], ['app.js', app]]) {
   if (src.includes('</script')) throw new Error(`${name} 含有 </script，会截断 HTML`);
 }
 
@@ -22,6 +23,7 @@ function render(extra) {
   let out = tpl
     .replace('/*__CSS__*/', () => css)
     .replace('/*__CORE__*/', () => core)
+    .replace('/*__STEGO__*/', () => stego)
     .replace('/*__APP__*/', () => app);
   if (extra) out = out.replace('</body>', () => '<script>\n' + extra + '\n</script>\n</body>');
   const m = out.match(/\/\*__\w+__\*\//);

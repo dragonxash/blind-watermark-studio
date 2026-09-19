@@ -5,6 +5,7 @@
   'use strict';
 
   var BWM = window.BWM;
+  var STG = window.BWMStego;
   var $ = function (s, r) { return (r || document).querySelector(s); };
   var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
 
@@ -347,6 +348,9 @@
     $('#btn-run-encode').disabled = !(slots['enc-img'].data && slots['enc-wm'].data);
     $('#btn-run-decode').disabled = !(slots['dec-img'].data && slots['dec-wm'].data);
     $('#btn-run-detect').disabled = !slots['det-target'].data;
+    $('#btn-run-stego').disabled = !slots['stg-img'].data;
+    $('#btn-run-extract').disabled = !slots['stgx-img'].data;
+    refreshStegoCapacity();
   }
 
   /* ==================== 示例图 ==================== */
@@ -755,14 +759,279 @@
     }
   });
 
+  /* ==================== 隐写 ==================== */
+  var stegoKind = 'text';
+  var stegoFile = null;
+
+  function formatBytes(n) {
+    if (n < 1024) return n + ' B';
+    if (n < 1048576) return (n / 1024).toFixed(1) + ' KB';
+    return (n / 1048576).toFixed(2) + ' MB';
+  }
+
+  // 嵌入 / 提取 切换
+  $$('.segtab[data-seg]').forEach(function (t) {
+    t.addEventListener('click', function () {
+      var seg = t.dataset.seg;
+      $$('.segtab[data-seg]').forEach(function (x) { x.classList.toggle('active', x === t); });
+      $('#seg-embed').hidden = seg !== 'embed';
+      $('#seg-extract').hidden = seg !== 'extract';
+    });
+  });
+
+  // 文字 / 文件 切换
+  $$('.segtab[data-kind]').forEach(function (t) {
+    t.addEventListener('click', function () {
+      stegoKind = t.dataset.kind;
+      $$('.segtab[data-kind]').forEach(function (x) { x.classList.toggle('active', x === t); });
+      $('#kind-text').hidden = stegoKind !== 'text';
+      $('#kind-file').hidden = stegoKind !== 'file';
+      refreshStegoCapacity();
+    });
+  });
+
+  $('#stg-text').addEventListener('input', function () {
+    var n = this.value ? STG.utf8Encode(this.value).length : 0;
+    $('#stg-text-meta').textContent = n ? 'UTF-8 编码后 ' + formatBytes(n) : '';
+    refreshStegoCapacity();
+  });
+
+  $('#stg-pick-file').addEventListener('click', function () {
+    $('#stg-file-input').click();
+  });
+  $('#stg-file-input').addEventListener('change', function () {
+    stegoFile = this.files[0] || null;
+    $('#stg-file-info').textContent = stegoFile
+      ? stegoFile.name + '（' + formatBytes(stegoFile.size) + '）'
+      : '尚未选择文件';
+    refreshStegoCapacity();
+  });
+  $('#stg-method').addEventListener('change', refreshStegoCapacity);
+
+  function currentPayloadSize() {
+    if (stegoKind === 'text') {
+      var t = $('#stg-text').value;
+      return t ? STG.utf8Encode(t).length : 0;
+    }
+    return stegoFile ? stegoFile.size : 0;
+  }
+
+  function refreshStegoCapacity() {
+    var el = $('#stg-capacity');
+    if (!el) return;
+    var s = slots['stg-img'] && slots['stg-img'].data;
+    if (!s) { el.textContent = '先选好载体图，这里会显示可用容量。'; return; }
+    var lsb = $('#stg-method').value === 'lsb';
+    var cap = lsb ? STG.lsbCapacityBytes(s.w, s.h) : STG.robustCapacityBytes(s.w, s.h);
+    var need = currentPayloadSize();
+    var msg = s.w + '×' + s.h + ' 的' + (lsb ? '大容量' : '鲁棒') + '容量约 ' + formatBytes(cap);
+    var over = false;
+    if (need > 0) {
+      msg += '，当前内容 ' + formatBytes(need);
+      if (need <= cap) {
+        msg += ' —— 放得下 ✓';
+      } else {
+        msg += ' —— 超出容量 ✗';
+        over = true;
+      }
+    }
+    el.textContent = msg;
+    el.className = over ? 'note warn' : 'note';
+  }
+
+  // ---------------- 嵌入 ----------------
+  $('#btn-run-stego').addEventListener('click', async function () {
+    var s = slots['stg-img'].data;
+    if (!s) { toast('请先选择载体图', true); return; }
+    var method = $('#stg-method').value;
+    var password = parseInt($('#stg-password').value, 10) || 1;
+    var params = getOpts();
+
+    var payload, contentType;
+    try {
+      if (stegoKind === 'text') {
+        var t = $('#stg-text').value;
+        if (!t) { toast('请输入要隐藏的文字', true); return; }
+        payload = STG.utf8Encode(t);
+        contentType = STG.TYPE_TEXT;
+      } else {
+        if (!stegoFile) { toast('请选择要隐藏的文件', true); return; }
+        payload = new Uint8Array(await stegoFile.arrayBuffer());
+        contentType = STG.TYPE_FILE;
+      }
+    } catch (e) {
+      toast('读取内容失败：' + (e.message || e), true);
+      return;
+    }
+
+    var btn = this, ui = makeProgress('#prog-stego');
+    setBusy(btn, true, '嵌入中…');
+    $('#res-stego').classList.remove('on');
+
+    try {
+      var img = toPlanes(s, params.backdrop);
+      // 让进度条先渲染出来，再做同步计算
+      await new Promise(function (r) { setTimeout(r, 60); });
+
+      var t0 = Date.now();
+      if (method === 'lsb') {
+        STG.embedLsb(img.planes, s.w, s.h, payload, password, null, contentType);
+      } else {
+        STG.embedRobust(img.planes, s.w, s.h, payload, password,
+          STG.DEFAULT_DELTA, null, contentType);
+      }
+      var ms = Date.now() - t0;
+      ui.tick(0.85);
+
+      var q = img.planes.map(function (p) {
+        var a = new Float64Array(p.length);
+        for (var i = 0; i < p.length; i++) a[i] = BWM.clampRound(p[i]);
+        return a;
+      });
+      var cv = planesToCanvas(q, s.w, s.h);
+      ui.tick(1);
+
+      var st = diffStats(q, img.planes, s.w * s.h);
+      $('#stego-verdict').className = 'verdict yes';
+      $('#stego-verdict').innerHTML = '<span class="ic">●</span><div>嵌入完成'
+        + '<small>已用「' + (method === 'lsb' ? '大容量' : '鲁棒') + '模式」藏入 '
+        + formatBytes(payload.length) + '，密码 <b>' + password + '</b>。请牢记密码，'
+        + '提取时必须一致。</small></div>';
+      $('#stat-stego').innerHTML = statHTML([
+        { k: '输出尺寸', v: cv.width + '×' + cv.height },
+        { k: 'PSNR', v: st.psnr.toFixed(2), u: 'dB', tone: st.psnr > 45 ? 'good' : 'warn' },
+        { k: '最大像素偏差', v: st.max.toFixed(0) },
+        { k: '藏入数据', v: formatBytes(payload.length) },
+        { k: '耗时', v: (ms / 1000).toFixed(2), u: 's' }
+      ]);
+      showResult($('#img-stego-out'), cv);
+      $('#btn-dl-stego').onclick = function () {
+        downloadCanvas(cv, 'bwm-stego-' + Date.now() + '.png');
+      };
+      var warn = $('#stego-warn');
+      if (method === 'lsb') {
+        warn.hidden = false;
+        warn.innerHTML = '<b>大容量模式没有任何鲁棒性</b>：图片一旦被 JPEG 压缩、缩放、'
+          + '截图或旋转，数据就彻底没了。请务必保留这份 PNG 原图，'
+          + '传输时也别经过任何会重新编码的渠道。';
+      } else {
+        warn.hidden = false;
+        warn.innerHTML = '<b>鲁棒模式能扛住一定程度的压缩</b>（实测 ±6 级像素抖动仍可提取），'
+          + '但请仍然以 PNG 保存与传递。另外它对<b>缩放和裁剪敏感</b>，'
+          + '尺寸一旦改变就可能提取失败。';
+      }
+      $('#res-stego').classList.add('on');
+      ui.done();
+    } catch (e) {
+      ui.fail();
+      var detail = (e && e.message) ? e.message : String(e);
+      if (e && e.stack) {
+        var lines = String(e.stack).split('\n');
+        detail += ' @@ ' + (lines[1] || '').trim();
+      }
+      toast(detail, true);
+    } finally {
+      setBusy(btn, false);
+    }
+  });
+
+  // ---------------- 提取 ----------------
+  $('#btn-run-extract').addEventListener('click', async function () {
+    var s = slots['stgx-img'].data;
+    if (!s) { toast('请先选择待提取的图', true); return; }
+    var password = parseInt($('#stgx-password').value, 10) || 1;
+    var params = getOpts();
+
+    var btn = this, ui = makeProgress('#prog-extract');
+    setBusy(btn, true, '提取中…');
+    $('#res-extract').classList.remove('on');
+
+    try {
+      var img = toPlanes(s, params.backdrop);
+      await new Promise(function (r) { setTimeout(r, 60); });
+      var res = STG.autoExtract(img.planes, s.w, s.h, password, STG.DEFAULT_DELTA, null);
+      ui.tick(1);
+      showExtractResult(res, s);
+      ui.done();
+    } catch (e) {
+      ui.fail();
+      toast(e.message || String(e), true);
+    } finally {
+      setBusy(btn, false);
+    }
+  });
+
+  function showExtractResult(res, s) {
+    var v = $('#extract-verdict');
+    $('#extract-text-wrap').hidden = true;
+    $('#extract-file-wrap').hidden = true;
+
+    if (!res) {
+      v.className = 'verdict no';
+      v.innerHTML = '<span class="ic">●</span><div>没有提取到数据'
+        + '<small>可能是密码不对，或这张图本来就没有嵌过数据。'
+        + '另外：大容量模式只要经过一次压缩就会失效，'
+        + '尺寸被改过也会导致提取失败。</small></div>';
+      $('#stat-extract').innerHTML = statHTML([
+        { k: '图片尺寸', v: s.w + '×' + s.h },
+        { k: '结果', v: '未找到', tone: 'bad' }
+      ]);
+      $('#res-extract').classList.add('on');
+      return;
+    }
+
+    var methodName = res.method === STG.METHOD_LSB ? '大容量模式' : '鲁棒模式';
+    var isText = res.contentType === STG.TYPE_TEXT;
+    v.className = 'verdict yes';
+    v.innerHTML = '<span class="ic">●</span><div>提取成功'
+      + '<small>数据来自「' + methodName + '」嵌入。</small></div>';
+
+    $('#stat-extract').innerHTML = statHTML([
+      { k: '嵌入方式', v: methodName },
+      { k: '内容类型', v: isText ? '文字' : '文件' },
+      { k: '数据大小', v: formatBytes(res.data.length) },
+      { k: '图片尺寸', v: s.w + '×' + s.h }
+    ]);
+
+    if (isText) {
+      $('#extract-text').value = STG.utf8Decode(res.data);
+      $('#extract-text-wrap').hidden = false;
+      $('#btn-copy-text').onclick = function () {
+        var txt = $('#extract-text').value;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(txt).then(
+            function () { toast('已复制到剪贴板'); },
+            function () { toast('复制失败，请手动选中后复制', true); }
+          );
+        } else {
+          $('#extract-text').select();
+          toast('已选中，请按 Ctrl+C 复制');
+        }
+      };
+    } else {
+      $('#extract-file-wrap').hidden = false;
+      $('#btn-dl-extract').onclick = function () {
+        var blob = new Blob([res.data], { type: 'application/octet-stream' });
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'extracted-' + Date.now() + '.bin';
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+      };
+    }
+    $('#res-extract').classList.add('on');
+  }
+
   /* ==================== 初始化 ==================== */
-  ['enc-img', 'enc-wm', 'dec-img', 'dec-wm', 'det-target', 'det-origin', 'det-cand']
-    .forEach(initSlot);
+  ['enc-img', 'enc-wm', 'dec-img', 'dec-wm', 'det-target', 'det-origin', 'det-cand',
+    'stg-img', 'stgx-img'].forEach(initSlot);
 
   var LABELS = {
     'enc-img': '载体图', 'enc-wm': '水印图',
     'dec-img': '原始载体图', 'dec-wm': '含水印图',
-    'det-target': '待检图', 'det-origin': '原图', 'det-cand': '候选水印'
+    'det-target': '待检图', 'det-origin': '原图', 'det-cand': '候选水印',
+    'stg-img': '载体图', 'stgx-img': '待提取图'
   };
   Object.keys(LABELS).forEach(function (k) { slots[k].el.dataset.label = LABELS[k]; });
 
